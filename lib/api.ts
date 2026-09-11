@@ -1,6 +1,6 @@
 // API Configuration
 const API_URL = 'https://sagebridge-api.cheikhmounirk.workers.dev';
-const API_KEY = 'universl_main_sage50bridge2026'; // TODO: Move to env after auth is implemented
+const API_KEY = 'universl_main_sage50bridge2026'; // Existing connector credential; preserve until server-side auth migration.
 
 // Types
 export interface Customer {

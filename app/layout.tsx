@@ -1,27 +1,4 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { BottomNav } from "@/components/BottomNav";
-
-const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
-const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
-
-export const metadata: Metadata = {
-  title: "SageBridge",
-  description: "Your Sage 50, everywhere.",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
-      <body className="antialiased">
-        <div className="min-h-screen pb-28">{children}</div>
-        <BottomNav />
-      </body>
-    </html>
-  );
-}
+import type {Metadata,Viewport} from 'next';import {Inter} from 'next/font/google';import './globals.css';import {AppChrome} from '@/components/AppChrome';
+const inter=Inter({subsets:['latin'],weight:['400','500'],variable:'--font-inter'});
+export const metadata:Metadata={title:'SageBridge',description:'Universal Construction · Sage 50 mobile companion'};export const viewport:Viewport={width:'device-width',initialScale:1,viewportFit:'cover',themeColor:'#161826'};
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en" className={inter.variable}><body><a href="#content" className="sr-only focus:not-sr-only">Skip to content</a><AppChrome>{children}</AppChrome></body></html>}

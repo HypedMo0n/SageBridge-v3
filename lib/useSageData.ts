@@ -1,0 +1,3 @@
+'use client';
+import {useEffect,useState} from 'react';import {api,type Customer,type Invoice,type Product} from './api';
+export function useSageData(){const [customers,setCustomers]=useState<Customer[]>([]),[invoices,setInvoices]=useState<Invoice[]>([]),[products,setProducts]=useState<Product[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState('');useEffect(()=>{Promise.all([api.getCustomers(),api.getInvoices(),api.getProducts()]).then(([c,i,p])=>{setCustomers(c);setInvoices(i);setProducts(p)}).catch(e=>setError(e instanceof Error?e.message:'Could not load Sage data')).finally(()=>setLoading(false))},[]);return{customers,invoices,products,loading,error}}
