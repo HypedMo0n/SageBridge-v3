@@ -85,11 +85,28 @@ class SageBridgeAPI {
     }
   }
 
-  async createCustomer(data: { name: string; email?: string; phone?: string }): Promise<Customer> {
-    return this.request<Customer>('/api/customers', {
+  async createCustomer(data: { name: string; email?: string; phone?: string; address?: string }): Promise<{ jobId: string; status: string }> {
+    const idempotencyKey = `customer-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    const response = await this.request<{ jobId: string; status: string; message: string }>('/api/customers', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        customer: data,
+        idempotencyKey
+      }),
     });
+
+    return { jobId: response.jobId, status: response.status };
+  }
+
+  // Poll job status
+  async getJobStatus(jobId: string): Promise<{
+    jobId: string;
+    status: 'pending' | 'processing' | 'succeeded' | 'failed';
+    resource?: { type: string; id: string };
+    error?: string;
+  }> {
+    return this.request(`/api/jobs/${jobId}`);
   }
 
   // Invoices
