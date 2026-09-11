@@ -11,7 +11,7 @@ import {
   Plus,
   UserPlus,
   Receipt,
-  CurrencyDollar,
+  NotePencil,
   X,
 } from '@phosphor-icons/react';
 
@@ -26,8 +26,8 @@ const NAV_RIGHT = [
 
 const QUICK_ACTIONS = [
   { href: '/customers/new', label: 'New Customer', desc: 'Add a customer to Sage', icon: UserPlus, active: true },
-  { href: '#', label: 'New Invoice', desc: 'Coming soon', icon: Receipt, active: false },
-  { href: '#', label: 'Record Payment', desc: 'Coming soon', icon: CurrencyDollar, active: false },
+  { href: '/quotes/new', label: 'New Quote', desc: 'Connector support coming next', icon: NotePencil, active: true },
+  { href: '/invoices/new', label: 'New Invoice', desc: 'Connector support coming next', icon: Receipt, active: true },
 ];
 
 export function BottomNav() {
@@ -116,7 +116,7 @@ export function BottomNav() {
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 z-30">
-        <div className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-t border-zinc-200 dark:border-zinc-800">
+        <div className="bg-white dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800">
           <div className="max-w-md mx-auto px-6">
             <div className="grid grid-cols-5 items-center h-[68px]">
               {NAV_LEFT.map((item) => {
@@ -171,7 +171,7 @@ export function BottomNav() {
           </div>
         </div>
         {/* Safe area for iOS */}
-        <div className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl h-5" />
+        <div className="bg-white dark:bg-zinc-900 h-5" />
       </nav>
     </>
   );

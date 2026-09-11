@@ -13,10 +13,20 @@ import {
 } from '@phosphor-icons/react';
 import type { ElementType } from 'react';
 
+function formatSyncAge(value: string, referenceTime: number): string {
+  const normalized = value.includes('T') ? value : `${value.replace(' ', 'T')}Z`;
+  const seconds = Math.max(0, Math.floor((referenceTime - new Date(normalized).getTime()) / 1000));
+  if (seconds < 60) return `${seconds} sec ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  return `${Math.floor(minutes / 60)} hr ago`;
+}
+
 export default function DashboardPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [referenceTime, setReferenceTime] = useState(0);
 
   useEffect(() => {
     Promise.all([api.getCustomers(), api.getInvoices(), api.getProducts()])
@@ -24,12 +34,25 @@ export default function DashboardPage() {
         setCustomers(c);
         setInvoices(i);
         setProducts(p);
+        setReferenceTime(Date.now());
       })
       .catch(console.error);
   }, []);
 
   const totalReceivables = customers.reduce((s, c) => s + c.balance, 0);
   const openInvoices = invoices.filter((i) => i.balance > 0).length;
+  const latestSync = customers.reduce<string | null>((latest, customer) => {
+    if (!customer.lastSyncedAt) return latest;
+    return !latest || customer.lastSyncedAt > latest ? customer.lastSyncedAt : latest;
+  }, null);
+  const normalizedLatestSync = latestSync
+    ? latestSync.includes('T')
+      ? latestSync
+      : `${latestSync.replace(' ', 'T')}Z`
+    : null;
+  const syncIsFresh = normalizedLatestSync && referenceTime
+    ? referenceTime - new Date(normalizedLatestSync).getTime() < 10 * 60 * 1000
+    : false;
 
   const stats = [
     {
@@ -66,9 +89,12 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold tracking-tight">SageBridge</h1>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">Universal Construction</p>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          Live
+        <div className="text-right text-xs text-zinc-500 dark:text-zinc-400">
+          <div className={`flex items-center justify-end gap-1.5 font-medium ${syncIsFresh ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'}`}>
+            <span className={`w-2 h-2 rounded-full ${syncIsFresh ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+            {syncIsFresh ? 'Sage connected' : 'Sync delayed'}
+          </div>
+          <div className="mt-0.5">{latestSync && referenceTime ? `Synced ${formatSyncAge(latestSync, referenceTime)}` : 'Checking sync...'}</div>
         </div>
       </div>
 

@@ -13,12 +13,16 @@ export default function CustomerDetailPage() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [referenceTime, setReferenceTime] = useState(0);
 
   useEffect(() => {
     api.getCustomer(params.id).then((c) => {
       setCustomer(c);
       if (c) {
-        api.getCustomerInvoices(c.sageId).then(setInvoices);
+        api.getCustomerInvoices(c.sageId).then((items) => {
+          setInvoices(items);
+          setReferenceTime(Date.now());
+        });
       }
       setLoading(false);
     });
@@ -45,6 +49,12 @@ export default function CustomerDetailPage() {
     );
   }
 
+  const openInvoices = invoices.filter((invoice) => invoice.balance > 0);
+  const overdueInvoices = openInvoices.filter((invoice) =>
+    Boolean(referenceTime && invoice.dueDate && new Date(invoice.dueDate).getTime() < referenceTime)
+  );
+  const hasOverdue = overdueInvoices.length > 0;
+
   return (
     <div className="max-w-md mx-auto px-4 py-6">
       <Link
@@ -60,28 +70,39 @@ export default function CustomerDetailPage() {
         {customer.status}
       </span>
 
-      <Link
-        href={`/invoices/new?customerId=${customer.sageId}`}
-        className="mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-emerald-600 font-medium text-white transition-colors hover:bg-emerald-700 active:scale-[0.99]"
-      >
-        Create invoice
-      </Link>
-
-      <div className="mt-5 bg-white dark:bg-zinc-900 rounded-2xl p-5 border border-zinc-200 dark:border-zinc-800">
-        <div className="text-sm text-zinc-500 dark:text-zinc-400">Outstanding balance</div>
+      <div className="mt-5 border-y border-zinc-200 dark:border-zinc-800 py-5">
+        <div className="text-sm text-zinc-500 dark:text-zinc-400">
+          {hasOverdue ? 'Overdue balance' : 'Outstanding balance'}
+        </div>
         <div
           className={`text-4xl font-bold tabular-nums mt-1 ${
-            customer.balance > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
+            hasOverdue
+              ? 'text-red-600 dark:text-red-400'
+              : customer.balance > 0
+                ? 'text-zinc-900 dark:text-zinc-100'
+                : 'text-emerald-600 dark:text-emerald-400'
           }`}
         >
           {formatMoney(customer.balance)}
         </div>
 
         <div className="grid grid-cols-2 gap-3 mt-5">
+          <Link
+            href={`/invoices/new?customerId=${customer.sageId}`}
+            className="flex items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-medium transition-colors"
+          >
+            Create invoice
+          </Link>
+          <Link
+            href={`/quotes/new?customerId=${customer.sageId}`}
+            className="flex items-center justify-center border border-zinc-300 dark:border-zinc-700 py-3 rounded-xl font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            Create quote
+          </Link>
           {customer.phone && (
             <a
               href={`tel:${customer.phone}`}
-              className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-medium transition-colors"
+              className="flex items-center justify-center gap-2 border border-zinc-300 dark:border-zinc-700 py-3 rounded-xl font-medium transition-colors"
             >
               <Phone size={18} weight="bold" />
               Call
@@ -90,7 +111,7 @@ export default function CustomerDetailPage() {
           {customer.email && (
             <a
               href={`mailto:${customer.email}`}
-              className="flex items-center justify-center gap-2 bg-zinc-900 dark:bg-zinc-700 hover:bg-zinc-800 text-white py-3 rounded-xl font-medium transition-colors"
+              className="flex items-center justify-center gap-2 border border-zinc-300 dark:border-zinc-700 py-3 rounded-xl font-medium transition-colors"
             >
               <Envelope size={18} weight="bold" />
               Email
@@ -99,7 +120,7 @@ export default function CustomerDetailPage() {
         </div>
       </div>
 
-      <div className="mt-4 bg-white dark:bg-zinc-900 rounded-2xl p-5 border border-zinc-200 dark:border-zinc-800">
+      <div className="mt-5 border-b border-zinc-200 dark:border-zinc-800 pb-5">
         <h2 className="font-semibold mb-3">Contact information</h2>
         <div className="space-y-3 text-sm">
           <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-300">
@@ -126,18 +147,28 @@ export default function CustomerDetailPage() {
 
       <div className="mt-6">
         <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-3">
-          Invoices ({invoices.length})
+          Open invoices ({openInvoices.length})
         </h2>
         <div className="space-y-3">
-          {invoices.map((invoice) => (
+          {openInvoices.slice(0, 5).map((invoice) => (
             <InvoiceCard key={invoice.id} invoice={invoice} />
           ))}
         </div>
-        {invoices.length === 0 && (
+        {openInvoices.length === 0 && (
           <div className="text-center py-8 text-zinc-500 dark:text-zinc-400 text-sm">
-            No invoices yet.
+            No open invoices.
           </div>
         )}
+      </div>
+
+      <div className="mt-6 border-t border-zinc-200 dark:border-zinc-800 pt-5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">Quotes</h2>
+          <Link href={`/quotes/new?customerId=${customer.sageId}`} className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            Create quote
+          </Link>
+        </div>
+        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">Quotes will appear here when quote sync is enabled.</p>
       </div>
     </div>
   );
