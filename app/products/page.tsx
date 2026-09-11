@@ -1,111 +1,124 @@
-import { api } from '@/lib/api';
+'use client';
+
+import { useState, useEffect, useMemo } from 'react';
+import { api, type Product } from '@/lib/api';
 import { formatMoney } from '@/lib/utils';
+import { SearchBar } from '@/components/SearchBar';
+import { Package, Wrench } from '@phosphor-icons/react';
 
-export const dynamic = 'force-dynamic';
+export default function ProductsPage() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
 
-export default async function ProductsPage() {
-  const products = await api.getProducts();
+  useEffect(() => {
+    api
+      .getProducts()
+      .then(setProducts)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
-  const services = products.filter(p => p.isService);
-  const items = products.filter(p => !p.isService);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)
+    );
+  }, [products, query]);
+
+  const services = filtered.filter((p) => p.isService);
+  const items = filtered.filter((p) => !p.isService);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Products & Services</h1>
-        </div>
-      </header>
+    <div className="max-w-md mx-auto px-4 py-6">
+      <h1 className="text-2xl font-bold tracking-tight mb-4">Products &amp; Services</h1>
+      <SearchBar
+        placeholder="Search name or SKU..."
+        value={query}
+        onChange={setQuery}
+      />
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {/* Services */}
-        {services.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-              Services ({services.length})
-            </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {services.map((product) => (
-                <div
-                  key={product.id}
-                  className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
-                        {product.name}
-                      </h3>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        SKU: {product.sku}
-                      </div>
-                    </div>
-                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                      Service
-                    </span>
-                  </div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {formatMoney(product.price)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Products */}
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Products ({items.length})
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {items.map((product) => (
+      <div className="mt-5 space-y-6">
+        {loading ? (
+          <div className="space-y-3">
+            {[...Array(5)].map((_, i) => (
               <div
-                key={product.id}
-                className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 dark:text-white mb-1">
-                      {product.name}
-                    </h3>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      SKU: {product.sku}
-                    </div>
-                  </div>
-                  <span className="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                    Product
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                      {formatMoney(product.price)}
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">Price</div>
-                  </div>
-                  {product.stock !== null && (
-                    <div>
-                      <div className={`text-2xl font-bold ${
-                        product.stock < (product.reorderLevel || 0)
-                          ? 'text-red-600 dark:text-red-400'
-                          : 'text-green-600 dark:text-green-400'
-                      }`}>
-                        {product.stock}
-                      </div>
-                      <div className="text-xs text-gray-600 dark:text-gray-400">In stock</div>
-                    </div>
-                  )}
-                </div>
-              </div>
+                key={i}
+                className="h-24 rounded-2xl bg-zinc-100 dark:bg-zinc-800 animate-pulse"
+              />
             ))}
           </div>
-        </div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-16">
+            <Package size={40} className="mx-auto text-zinc-300 dark:text-zinc-600 mb-3" />
+            <p className="text-zinc-500 dark:text-zinc-400">
+              {query ? 'No products match your search.' : 'No products yet.'}
+            </p>
+          </div>
+        ) : (
+          <>
+            {services.length > 0 && (
+              <section>
+                <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-3">
+                  Services ({services.length})
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {services.map((product) => (
+                    <ProductCard key={product.id} product={product} isService />
+                  ))}
+                </div>
+              </section>
+            )}
+            {items.length > 0 && (
+              <section>
+                <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-3">
+                  Products ({items.length})
+                </h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {items.map((product) => (
+                    <ProductCard key={product.id} product={product} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
-        {products.length === 0 && (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">📦</div>
-            <div className="text-gray-600 dark:text-gray-400">No products found</div>
+function ProductCard({ product, isService = false }: { product: Product; isService?: boolean }) {
+  const lowStock = product.stock !== null && product.reorderLevel !== null && product.stock < product.reorderLevel;
+
+  return (
+    <div className="bg-white dark:bg-zinc-900 rounded-2xl p-4 border border-zinc-200 dark:border-zinc-800">
+      <div className="flex items-start gap-3">
+        <div
+          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+            isService
+              ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+              : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+          }`}
+        >
+          {isService ? <Wrench size={20} weight="bold" /> : <Package size={20} weight="bold" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-medium text-zinc-900 dark:text-zinc-100 truncate">{product.name}</h3>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{product.sku}</p>
+        </div>
+      </div>
+
+      <div className="flex items-end justify-between mt-3">
+        <div className="text-lg font-bold tabular-nums">{formatMoney(product.price)}</div>
+        {product.stock !== null && !isService && (
+          <div
+            className={`text-sm font-medium tabular-nums ${
+              lowStock ? 'text-red-600 dark:text-red-400' : 'text-zinc-500 dark:text-zinc-400'
+            }`}
+          >
+            {product.stock} in stock
           </div>
         )}
       </div>
