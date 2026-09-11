@@ -8,7 +8,7 @@ export function formatMoney(amount: number): string {
 
 export function formatDate(dateString: string): string {
   const date = new Date(dateString);
-  return new Intl.DateFormat('en-CA', {
+  return new Intl.DateTimeFormat('en-CA', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
