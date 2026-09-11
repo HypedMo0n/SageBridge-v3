@@ -105,10 +105,10 @@ export default function DashboardPage() {
           return (
             <div
               key={stat.label}
-              className="bg-white dark:bg-zinc-900 rounded-2xl p-4 border border-zinc-200 dark:border-zinc-800"
+              className="min-w-0 bg-white dark:bg-zinc-900 rounded-2xl p-4 border border-zinc-200 dark:border-zinc-800 [container-type:inline-size]"
             >
               <Icon size={20} className={stat.accent} />
-              <div className="text-2xl font-bold tabular-nums mt-3">{stat.value}</div>
+              <div className="mt-3 whitespace-nowrap text-[clamp(0.72rem,8cqi,1.5rem)] leading-tight font-bold tabular-nums">{stat.value}</div>
               <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">{stat.label}</div>
             </div>
           );
