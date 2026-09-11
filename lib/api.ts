@@ -1,0 +1,138 @@
+// API Configuration
+const API_URL = 'https://sagebridge-api.cheikhmounirk.workers.dev';
+const API_KEY = 'universl_main_sage50bridge2026'; // TODO: Move to env after auth is implemented
+
+// Types
+export interface Customer {
+  id: number;
+  sageId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  balance: number;
+  status: string;
+  address?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postalCode?: string | null;
+  lastSyncedAt: string;
+}
+
+export interface Invoice {
+  id: number;
+  sageId: string;
+  invoiceNumber: string;
+  date: string;
+  dueDate: string | null;
+  total: number;
+  balance: number;
+  status: string;
+  customerSageId: string;
+  customerName: string;
+}
+
+export interface Product {
+  id: number;
+  sageId: string;
+  sku: string;
+  name: string;
+  description: string | null;
+  price: number;
+  stock: number | null;
+  reorderLevel: number | null;
+  category: string | null;
+  isService: boolean;
+  lastSyncedAt: string;
+}
+
+export interface ApiResponse<T> {
+  data?: T;
+  error?: string;
+}
+
+// API Client
+class SageBridgeAPI {
+  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        'X-API-Key': API_KEY,
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // Customers
+  async getCustomers(): Promise<Customer[]> {
+    const response = await this.request<{ customers: Customer[] }>('/api/customers');
+    return response.customers;
+  }
+
+  async getCustomer(id: string): Promise<Customer | null> {
+    try {
+      const customers = await this.getCustomers();
+      return customers.find(c => c.sageId === id || c.id.toString() === id) || null;
+    } catch (error) {
+      console.error('Error fetching customer:', error);
+      return null;
+    }
+  }
+
+  async createCustomer(data: { name: string; email?: string; phone?: string }): Promise<Customer> {
+    return this.request<Customer>('/api/customers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Invoices
+  async getInvoices(): Promise<Invoice[]> {
+    const response = await this.request<{ invoices: Invoice[] }>('/api/invoices');
+    return response.invoices;
+  }
+
+  async getInvoice(id: string): Promise<Invoice | null> {
+    try {
+      const invoices = await this.getInvoices();
+      return invoices.find(i => i.invoiceNumber === id || i.id.toString() === id) || null;
+    } catch (error) {
+      console.error('Error fetching invoice:', error);
+      return null;
+    }
+  }
+
+  async getCustomerInvoices(customerSageId: string): Promise<Invoice[]> {
+    try {
+      const invoices = await this.getInvoices();
+      return invoices.filter(i => i.customerSageId === customerSageId);
+    } catch (error) {
+      console.error('Error fetching customer invoices:', error);
+      return [];
+    }
+  }
+
+  // Products
+  async getProducts(): Promise<Product[]> {
+    const response = await this.request<{ all?: Product[]; products?: Product[] }>('/api/products');
+    return response.all || response.products || [];
+  }
+
+  async getProduct(id: string): Promise<Product | null> {
+    try {
+      const products = await this.getProducts();
+      return products.find(p => p.sku === id || p.id.toString() === id) || null;
+    } catch (error) {
+      console.error('Error fetching product:', error);
+      return null;
+    }
+  }
+}
+
+export const api = new SageBridgeAPI();
