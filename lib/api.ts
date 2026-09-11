@@ -63,7 +63,8 @@ class SageBridgeAPI {
     });
 
     if (!response.ok) {
-      throw new Error(`API error: ${response.statusText}`);
+      const body = await response.json().catch(() => null) as { error?: string } | null;
+      throw new Error(body?.error || `API error: ${response.statusText}`);
     }
 
     return response.json();
@@ -107,6 +108,18 @@ class SageBridgeAPI {
     error?: string;
   }> {
     return this.request(`/api/jobs/${jobId}`);
+  }
+
+  async createQuote(data: {
+    customerId: string;
+    lines: Array<{ sku: string; quantity: number; unitPrice: number }>;
+  }): Promise<{ jobId: string; status: string }> {
+    const idempotencyKey = `quote-create-${Date.now()}-${crypto.randomUUID()}`;
+    const response = await this.request<{ jobId: string; status: string }>('/api/quotes', {
+      method: 'POST',
+      body: JSON.stringify({ quote: data, idempotencyKey }),
+    });
+    return response;
   }
 
   // Invoices
