@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';import {CaretRight,Package,Wrench,Receipt} from '@phosphor-icons/react';import type{Customer,Invoice,Product}from '@/lib/api';import{formatMoney}from '@/lib/utils';
 export const initials=(s:string)=>s.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();
 export function CustomerRow({c}:{c:Customer}){return <Link href={`/customers/${c.sageId}`} className="row"><span className="avatar">{initials(c.name)}</span><span className="row-main"><span className="row-title">{c.name}</span><span className="row-sub">{c.city||c.email||'Sage 50 customer'}</span></span><span style={{textAlign:'right'}}><span className="row-title money">{formatMoney(c.balance)}</span><span className="row-sub">{c.balance?'outstanding':'clear'}</span></span><CaretRight className="chev" size={13}/></Link>}
