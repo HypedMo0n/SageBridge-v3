@@ -1,168 +1,137 @@
-// API Configuration
-const API_URL = 'https://sagebridge-api.cheikhmounirk.workers.dev';
-const API_KEY = 'universl_main_sage50bridge2026'; // Existing connector credential; preserve until server-side auth migration.
+import { auth } from './firebase';
+import type { BootstrapState, Company, Customer, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus } from './types';
 
-// Types
-export interface Customer {
-  id: number;
-  sageId: string;
-  name: string;
-  email: string | null;
-  phone: string | null;
-  balance: number;
-  status: string;
-  address?: string | null;
-  city?: string | null;
-  province?: string | null;
-  postalCode?: string | null;
-  lastSyncedAt: string;
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sagebridge-api.cheikhmounirk.workers.dev';
+const COMPANY_STORAGE_KEY = 'sagebridge-company-id';
+let selectedCompanyId = '';
+
+function readCompanyId() {
+  if (selectedCompanyId) return selectedCompanyId;
+  if (typeof window !== 'undefined') selectedCompanyId = window.localStorage.getItem(COMPANY_STORAGE_KEY) || '';
+  return selectedCompanyId;
 }
 
-export interface Invoice {
-  id: number;
-  sageId: string;
-  invoiceNumber: string;
-  date: string;
-  dueDate: string | null;
-  total: number;
-  balance: number;
-  status: string;
-  customerSageId: string;
-  customerName: string;
+export function setSelectedCompanyId(companyId: string) {
+  selectedCompanyId = companyId;
+  if (typeof window !== 'undefined') {
+    if (companyId) window.localStorage.setItem(COMPANY_STORAGE_KEY, companyId);
+    else window.localStorage.removeItem(COMPANY_STORAGE_KEY);
+  }
 }
 
-export interface Product {
-  id: number;
-  sageId: string;
-  sku: string;
-  name: string;
-  description: string | null;
-  price: number;
-  stock: number | null;
-  reorderLevel: number | null;
-  category: string | null;
-  isService: boolean;
-  lastSyncedAt: string;
+export function getSelectedCompanyId() { return readCompanyId(); }
+
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code?: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
 }
 
-export interface ApiResponse<T> {
-  data?: T;
-  error?: string;
+type ErrorBody = { error?: string | { message?: string; code?: string }; message?: string; code?: string };
+type RawCompany = Record<string, unknown> & { id: string };
+type RawProvisioning = Record<string, unknown>;
+
+function stringValue(value: unknown, fallback = '') { return typeof value === 'string' ? value : fallback; }
+function numberValue(value: unknown, fallback = 0) { return typeof value === 'number' && Number.isFinite(value) ? value : fallback; }
+function nullableString(value: unknown) { return typeof value === 'string' ? value : null; }
+
+function mapCompany(row: RawCompany): Company {
+  return {
+    id: row.id,
+    organizationId: stringValue(row.organizationId ?? row.organization_id) || undefined,
+    name: stringValue(row.name ?? row.sageCompanyName ?? row.sage_company_name, 'Sage company'),
+    connectorStatus: stringValue(row.connectorStatus ?? row.connector_status, 'unknown'),
+    lastSeenAt: nullableString(row.lastSeenAt ?? row.last_seen_at),
+    online: row.online === true,
+    provisioningState: (nullableString(row.provisioningState ?? row.provisioning_state) as ProvisioningStatus | null),
+    provisioningProgress: typeof (row.provisioningProgress ?? row.provisioning_progress) === 'number' ? Number(row.provisioningProgress ?? row.provisioning_progress) : null,
+    createdAt: stringValue(row.createdAt ?? row.created_at) || undefined,
+  };
 }
 
-// API Client
+function mapProvisioning(row: RawProvisioning): ProvisioningState {
+  const rawCounts = row.counts && typeof row.counts === 'object' ? row.counts as Record<string, unknown> : {};
+  const counts = Object.fromEntries(Object.entries(rawCounts).filter((entry): entry is [string, number] => typeof entry[1] === 'number'));
+  return {
+    state: stringValue(row.state, 'created') as ProvisioningStatus,
+    progress: Math.max(0, Math.min(100, numberValue(row.progress))),
+    errorCode: nullableString(row.errorCode ?? row.error_code),
+    errorMessage: nullableString(row.errorMessage ?? row.error_message),
+    updatedAt: nullableString(row.updatedAt ?? row.updated_at),
+    counts,
+  };
+}
+
 class SageBridgeAPI {
-  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  private async request<T>(endpoint: string, options: RequestInit = {}, retried = false, companyScoped = false): Promise<T> {
+    const user = auth.currentUser;
+    if (!user) throw new ApiError('Your session has ended. Please sign in again.', 401, 'auth/session-ended');
+    const token = await user.getIdToken(retried);
+    const companyId = companyScoped ? readCompanyId() : '';
+    if (companyScoped && !companyId) throw new ApiError('Select a company before continuing.', 400, 'COMPANY_REQUIRED');
     const response = await fetch(`${API_URL}${endpoint}`, {
       ...options,
       headers: {
-        'X-API-Key': API_KEY,
         'Content-Type': 'application/json',
-        ...options?.headers,
+        Authorization: `Bearer ${token}`,
+        ...(companyScoped ? { 'X-Company-Id': companyId } : {}),
+        ...options.headers,
       },
     });
-
+    if (response.status === 401 && !retried) return this.request<T>(endpoint, options, true, companyScoped);
     if (!response.ok) {
-      const body = await response.json().catch(() => null) as { error?: string } | null;
-      throw new Error(body?.error || `API error: ${response.statusText}`);
+      const body = await response.json().catch(() => null) as ErrorBody | null;
+      const nested = typeof body?.error === 'object' ? body.error : null;
+      throw new ApiError(nested?.message || (typeof body?.error === 'string' ? body.error : body?.message) || `Request failed (${response.status})`, response.status, nested?.code || body?.code);
     }
-
-    return response.json();
+    if (response.status === 204) return undefined as T;
+    return response.json() as Promise<T>;
   }
 
-  // Customers
-  async getCustomers(): Promise<Customer[]> {
-    const response = await this.request<{ customers: Customer[] }>('/api/customers');
-    return response.customers;
+  async bootstrap(): Promise<BootstrapState> {
+    const response = await this.request<Omit<BootstrapState, 'companies'> & { companies: RawCompany[] }>('/auth/bootstrap', { method: 'POST' });
+    return { ...response, companies: response.companies.map(mapCompany) };
   }
 
-  async getCustomer(id: string): Promise<Customer | null> {
-    try {
-      const customers = await this.getCustomers();
-      return customers.find(c => c.sageId === id || c.id.toString() === id) || null;
-    } catch (error) {
-      console.error('Error fetching customer:', error);
-      return null;
-    }
+  async me(): Promise<MeState> { return this.request<MeState>('/auth/me'); }
+
+  async getCompanies(organizationId: string): Promise<Company[]> {
+    const response = await this.request<{ companies: RawCompany[] }>(`/api/organizations/${encodeURIComponent(organizationId)}/companies`);
+    return response.companies.map(mapCompany);
   }
 
+  async createCompany(organizationId: string, name: string): Promise<Company> {
+    const response = await this.request<{ company: RawCompany }>(`/api/organizations/${encodeURIComponent(organizationId)}/companies`, { method: 'POST', body: JSON.stringify({ name }) });
+    return mapCompany(response.company);
+  }
+
+  async createPairingCode(companyId: string): Promise<PairingCode> {
+    return this.request<PairingCode>(`/api/companies/${encodeURIComponent(companyId)}/pairing-codes`, { method: 'POST' });
+  }
+
+  async getProvisioning(companyId: string): Promise<ProvisioningState> {
+    const response = await this.request<{ provisioning: RawProvisioning }>(`/api/companies/${encodeURIComponent(companyId)}/provisioning`);
+    return mapProvisioning(response.provisioning);
+  }
+
+  async revokeConnector(id: string): Promise<void> { await this.request(`/api/connectors/${encodeURIComponent(id)}/revoke`, { method: 'POST' }); }
+
+  async getCustomers(): Promise<Customer[]> { return (await this.request<{ customers: Customer[] }>('/api/customers', {}, false, true)).customers; }
+  async getCustomer(id: string): Promise<Customer | null> { return (await this.getCustomers()).find((item) => item.sageId === id || item.id.toString() === id) || null; }
   async createCustomer(data: { name: string; email?: string; phone?: string; address?: string }): Promise<{ jobId: string; status: string }> {
-    const idempotencyKey = `customer-create-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    const response = await this.request<{ jobId: string; status: string; message: string }>('/api/customers', {
-      method: 'POST',
-      body: JSON.stringify({
-        customer: data,
-        idempotencyKey
-      }),
-    });
-
-    return { jobId: response.jobId, status: response.status };
+    return this.request('/api/customers', { method: 'POST', body: JSON.stringify({ customer: data, idempotencyKey: `customer-create-${crypto.randomUUID()}` }) }, false, true);
   }
-
-  // Poll job status
-  async getJobStatus(jobId: string): Promise<{
-    jobId: string;
-    status: 'pending' | 'processing' | 'succeeded' | 'failed';
-    resource?: { type: string; id: string };
-    error?: string;
-  }> {
-    return this.request(`/api/jobs/${jobId}`);
+  async getJobStatus(jobId: string): Promise<JobStatus> { return this.request(`/api/jobs/${encodeURIComponent(jobId)}`, {}, false, true); }
+  async createQuote(data: { customerId: string; lines: Array<{ sku: string; quantity: number; unitPrice: number }> }): Promise<{ jobId: string; status: string }> {
+    return this.request('/api/quotes', { method: 'POST', body: JSON.stringify({ quote: data, idempotencyKey: `quote-create-${crypto.randomUUID()}` }) }, false, true);
   }
-
-  async createQuote(data: {
-    customerId: string;
-    lines: Array<{ sku: string; quantity: number; unitPrice: number }>;
-  }): Promise<{ jobId: string; status: string }> {
-    const idempotencyKey = `quote-create-${Date.now()}-${crypto.randomUUID()}`;
-    const response = await this.request<{ jobId: string; status: string }>('/api/quotes', {
-      method: 'POST',
-      body: JSON.stringify({ quote: data, idempotencyKey }),
-    });
-    return response;
-  }
-
-  // Invoices
-  async getInvoices(): Promise<Invoice[]> {
-    const response = await this.request<{ invoices: Invoice[] }>('/api/invoices');
-    return response.invoices;
-  }
-
-  async getInvoice(id: string): Promise<Invoice | null> {
-    try {
-      const invoices = await this.getInvoices();
-      return invoices.find(i => i.invoiceNumber === id || i.id.toString() === id) || null;
-    } catch (error) {
-      console.error('Error fetching invoice:', error);
-      return null;
-    }
-  }
-
-  async getCustomerInvoices(customerSageId: string): Promise<Invoice[]> {
-    try {
-      const invoices = await this.getInvoices();
-      return invoices.filter(i => i.customerSageId === customerSageId);
-    } catch (error) {
-      console.error('Error fetching customer invoices:', error);
-      return [];
-    }
-  }
-
-  // Products
-  async getProducts(): Promise<Product[]> {
-    const response = await this.request<{ all?: Product[]; products?: Product[] }>('/api/products');
-    return response.all || response.products || [];
-  }
-
-  async getProduct(id: string): Promise<Product | null> {
-    try {
-      const products = await this.getProducts();
-      return products.find(p => p.sku === id || p.id.toString() === id) || null;
-    } catch (error) {
-      console.error('Error fetching product:', error);
-      return null;
-    }
-  }
+  async getInvoices(): Promise<Invoice[]> { return (await this.request<{ invoices: Invoice[] }>('/api/invoices', {}, false, true)).invoices; }
+  async getInvoice(id: string): Promise<Invoice | null> { return (await this.getInvoices()).find((item) => item.invoiceNumber === id || item.id.toString() === id) || null; }
+  async getCustomerInvoices(customerSageId: string): Promise<Invoice[]> { return (await this.getInvoices()).filter((item) => item.customerSageId === customerSageId); }
+  async getProducts(): Promise<Product[]> { const response = await this.request<{ all?: Product[]; products?: Product[] }>('/api/products', {}, false, true); return response.all || response.products || []; }
+  async getProduct(id: string): Promise<Product | null> { return (await this.getProducts()).find((item) => item.sku === id || item.id.toString() === id) || null; }
 }
 
 export const api = new SageBridgeAPI();
+export type { BootstrapState, Company, Connector, Customer, Invoice, PairingCode, Product, ProvisioningState } from './types';

@@ -1,1 +1,14 @@
-'use client';import{useState}from'react';const groups=[['Sync',[['Sync frequency','Every 15 min'],['Wi-Fi only','Off'],['Notifications','Paid + overdue']]],['Documents',[['Company & logo','Universal Construction'],['Default terms','Net 30'],['Tax rates','HST 13%']]],['Account',[['Users & permissions','Managed on desktop'],['This device','Current browser']]]] as const;export default function Page(){const[msg,setMsg]=useState('');return <>{groups.map(([title,rows])=><section className="section" key={title}><h2 className="kicker">{title}</h2><div className="card">{rows.map(([a,b])=><button className="row" style={{width:'100%',background:'transparent',borderLeft:0,borderRight:0,borderTop:0,textAlign:'left'}} onClick={()=>setMsg(`${a} is managed by the SageBridge desktop connector.`)} key={a}><span className="row-main row-title">{a}</span><span className="row-sub">{b}</span></button>)}</div></section>)}<a href="/pair" className="btn btn-block">Disconnect this phone</a>{msg&&<div className="toast" onAnimationEnd={()=>setTimeout(()=>setMsg(''),2200)}>{msg}</div>}</>}
+'use client';
+
+import Link from 'next/link';
+import { useAuth } from '@/components/AuthProvider';
+
+const groups = [
+  ['Sync', [['Sync frequency', 'Managed by connector'], ['Notifications', 'Workspace settings']]],
+  ['Documents', [['Company & logo', 'From Sage 50'], ['Default terms', 'From Sage 50'], ['Tax rates', 'From Sage 50']]],
+] as const;
+
+export default function SettingsPage() {
+  const { user, logout } = useAuth();
+  return <>{groups.map(([title, rows]) => <section className="section" key={title}><h2 className="kicker">{title}</h2><div className="card">{rows.map(([label, detail]) => <div className="row" key={label}><span className="row-main row-title">{label}</span><span className="row-sub">{detail}</span></div>)}</div></section>)}<section className="section"><h2 className="kicker">Account</h2><div className="card"><div className="row"><span className="row-main"><span className="row-title">Signed in</span><span className="row-sub">{user?.email}</span></span></div><Link href="/pair" className="btn btn-block">Manage connectors</Link><button onClick={logout} className="btn btn-block settings-signout">Sign out</button></div></section></>;
+}
