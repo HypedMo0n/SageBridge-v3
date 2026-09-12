@@ -6,6 +6,7 @@ import { useSageData } from '@/lib/useSageData';
 import { ErrorState, LoadingRows } from '@/components/SageRows';
 import { formatMoney } from '@/lib/utils';
 import { bucketReceivables } from '@/lib/aging';
+import { monthlySales } from '@/lib/sales';
 
 type Period = 30 | 90 | 365;
 
@@ -25,18 +26,7 @@ export default function ReportsPage() {
     const top = [...customers].sort((a, b) => b.balance - a.balance).slice(0, 5);
     const topMax = Math.max(...top.map((customer) => customer.balance), 1);
 
-    const months = Array.from({ length: 6 }, (_, index) => {
-      const date = new Date(now.getFullYear(), now.getMonth() - 5 + index, 1);
-      const monthRows = rows.filter((invoice) => {
-        const invoiceDate = new Date(invoice.date);
-        return invoiceDate.getMonth() === date.getMonth() && invoiceDate.getFullYear() === date.getFullYear();
-      });
-      return {
-        label: date.toLocaleString('en-CA', { month: 'short' }),
-        invoiced: monthRows.reduce((sum, invoice) => sum + invoice.total, 0),
-        collected: monthRows.reduce((sum, invoice) => sum + invoice.total - invoice.balance, 0),
-      };
-    });
+    const months = monthlySales(rows, 6, now.getTime());
     const chartMax = Math.max(...months.flatMap((month) => [month.invoiced, month.collected]), 1);
 
     const { buckets: aging } = bucketReceivables(invoices, now.getTime());

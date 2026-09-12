@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:contracts": "node scripts/check-api-contracts.mjs",
-    "test:aging": "tsx scripts/check-aging-buckets.ts"
+    "test:aging": "tsx scripts/check-aging-buckets.ts",
+    "test:pulse": "tsx scripts/check-pulse.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
