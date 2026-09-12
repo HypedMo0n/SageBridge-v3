@@ -70,15 +70,30 @@ class SageBridgeAPI {
     const token = await user.getIdToken(retried);
     const companyId = companyScoped ? readCompanyId() : '';
     if (companyScoped && !companyId) throw new ApiError('Select a company before continuing.', 400, 'COMPANY_REQUIRED');
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        ...(companyScoped ? { 'X-Company-Id': companyId } : {}),
-        ...options.headers,
-      },
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          ...(companyScoped ? { 'X-Company-Id': companyId } : {}),
+          ...options.headers,
+        },
+      });
+    } catch (cause) {
+      // fetch() rejects here only when the request never got a response at
+      // all (DNS/connection failure, CORS preflight rejection, offline).
+      // The raw exception's message is a browser-internal string ("Load
+      // failed" on Safari, "Failed to fetch" on Chrome, "NetworkError..."
+      // on Firefox) that is not actionable and not consistent across
+      // browsers - every caller's generic error display otherwise shows
+      // that raw text verbatim. Normalize it into one clear, actionable
+      // ApiError instead, and keep the original in the console for
+      // debugging.
+      console.error('Network request failed:', endpoint, cause);
+      throw new ApiError('Could not reach SageBridge. Check your connection and try again.', 0, 'network/unreachable');
+    }
     if (response.status === 401 && !retried) return this.request<T>(endpoint, options, true, companyScoped);
     if (!response.ok) {
       const body = await response.json().catch(() => null) as ErrorBody | null;

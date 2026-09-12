@@ -60,4 +60,14 @@ const createWizard = readFileSync(new URL('../components/CreateWizard.tsx', impo
 assert.ok(createWizard.includes('api.createInvoice'), 'CreateWizard does not call api.createInvoice()');
 assert.ok(!/invoice posting (is|awaits)/i.test(source), 'source still claims invoice posting is unavailable');
 
+// Regression guard: request() previously let a raw fetch() network failure
+// (no HTTP response at all) propagate as an unhandled browser-internal
+// exception - "Load failed" on Safari, "Failed to fetch" on Chrome - which
+// every caller's generic error display then showed verbatim. It must be
+// caught at the one place all API calls funnel through and normalized into
+// an actionable ApiError instead.
+assert.ok(/try\s*\{\s*response\s*=\s*await fetch/.test(api), 'lib/api.ts request() does not wrap fetch() in a try/catch');
+assert.ok(api.includes("'network/unreachable'"), "lib/api.ts is missing the 'network/unreachable' error code for fetch-level failures");
+assert.ok(api.includes("throw new ApiError('Could not reach SageBridge"), 'lib/api.ts does not normalize a raw fetch() network failure into an actionable ApiError');
+
 console.log('Frontend API contract assertions passed.');
