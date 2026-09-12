@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { useSageData } from '@/lib/useSageData';
 import { ErrorState, LoadingRows } from '@/components/SageRows';
 import { formatMoney } from '@/lib/utils';
+import { bucketReceivables } from '@/lib/aging';
 
 type Period = 30 | 90 | 365;
 
@@ -38,22 +39,7 @@ export default function ReportsPage() {
     });
     const chartMax = Math.max(...months.flatMap((month) => [month.invoiced, month.collected]), 1);
 
-    const aging = [
-      { label: 'Current', min: -Infinity, max: 0 },
-      { label: '1–30', min: 0, max: 30 },
-      { label: '31–60', min: 30, max: 60 },
-      { label: '61–90+', min: 60, max: Infinity },
-    ].map((bucket, index) => {
-      const value = invoices
-        .filter((invoice) => invoice.balance > 0)
-        .filter((invoice) => {
-          if (!invoice.dueDate) return index === 0;
-          const age = (now.getTime() - new Date(invoice.dueDate).getTime()) / 86_400_000;
-          return age > bucket.min && age <= bucket.max;
-        })
-        .reduce((sum, invoice) => sum + invoice.balance, 0);
-      return { ...bucket, value };
-    });
+    const { buckets: aging } = bucketReceivables(invoices, now.getTime());
     const agingMax = Math.max(...aging.map((bucket) => bucket.value), 1);
 
     return { invoiced, collected, outstanding, top, topMax, months, chartMax, aging, agingMax };
@@ -99,12 +85,12 @@ export default function ReportsPage() {
         <h2 className="kicker">Receivables by age</h2>
         <div className="stack">
           {report.aging.map((bucket, index) => (
-            <div key={bucket.label} style={{ display: 'grid', gridTemplateColumns: '58px 1fr auto', alignItems: 'center', gap: 9 }}>
-              <span className="row-sub">{bucket.label}</span>
-              <span className="bar" style={{ height: 6 }}>
+            <div key={bucket.key} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: 9 }}>
+              <span className="row-sub" style={{ whiteSpace: 'nowrap' }}>{bucket.label}</span>
+              <span className="bar" style={{ height: 6, minWidth: 24 }}>
                 <i style={{ width: `${(bucket.value / report.agingMax) * 100}%`, background: `var(--viz-${index + 1})` }} />
               </span>
-              <span className="money small">{formatMoney(bucket.value)}</span>
+              <span className="money small" style={{ whiteSpace: 'nowrap' }}>{formatMoney(bucket.value)}</span>
             </div>
           ))}
         </div>
