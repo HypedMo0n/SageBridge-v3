@@ -2,15 +2,15 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { FileText, Plus } from '@phosphor-icons/react';
+import { Plus } from '@phosphor-icons/react';
 import { useSageData } from '@/lib/useSageData';
-import { InvoiceRow, LoadingRows, ErrorState } from '@/components/SageRows';
+import { InvoiceRow, QuoteRow, LoadingRows, ErrorState } from '@/components/SageRows';
 
 type DocumentView = 'Invoices' | 'Quotes' | 'All';
 type InvoiceFilter = 'All' | 'Overdue' | 'Open' | 'Paid';
 
 export default function Page() {
-  const { invoices, loading, error } = useSageData();
+  const { invoices, quotes, loading, error } = useSageData();
   const [view, setView] = useState<DocumentView>('Invoices');
   const [filter, setFilter] = useState<InvoiceFilter>('All');
   const now = new Date();
@@ -35,7 +35,8 @@ export default function Page() {
     </section>}
 
     {showsQuotes && <section className="work-section quotes-state" aria-labelledby="quote-heading">
-      <div className="empty card"><span className="icon-box accent-box"><FileText size={20} /></span><h2 id="quote-heading">Quotes aren’t available in this list yet</h2><p>The connector can create quotes, but the current API does not return quote records. No quote history can be shown here until read support is added.</p><Link href="/quotes/new" className="btn btn-primary"><Plus size={16} />Create quote</Link></div>
+      <div className="work-section-head"><div><h2 id="quote-heading">Quotes</h2><p>Synced from Sage 50</p></div></div>
+      {loading ? <LoadingRows /> : error ? <ErrorState text={error} /> : quotes.length ? <div className="stack work-list">{quotes.map((quote) => <QuoteRow q={quote} key={quote.id || quote.quoteNumber} />)}</div> : <div className="empty card">No quotes have synced from Sage 50.</div>}
     </section>}
 
     <Link href={view === 'Quotes' ? '/quotes/new' : '/invoices/new'} className="fab work-fab"><Plus size={17} />New {view === 'Quotes' ? 'quote' : 'invoice'}</Link>

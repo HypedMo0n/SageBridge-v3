@@ -26,6 +26,25 @@ export interface Invoice {
   customerName: string;
 }
 
+export interface QuoteLine {
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export interface Quote {
+  id: string;
+  quoteNumber: string;
+  date: string;
+  customerSageId: string;
+  customerName: string;
+  subtotal: number;
+  taxAmount: number;
+  total: number;
+  lines: QuoteLine[];
+}
+
 export interface Product {
   id: number;
   sageId: string;

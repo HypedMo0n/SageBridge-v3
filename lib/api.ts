@@ -1,5 +1,5 @@
 import { auth } from './firebase';
-import type { BootstrapState, Company, Customer, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus } from './types';
+import type { BootstrapState, Company, Customer, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus, Quote } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sagebridge-api.cheikhmounirk.workers.dev';
 const COMPANY_STORAGE_KEY = 'sagebridge-company-id';
@@ -31,6 +31,7 @@ export class ApiError extends Error {
 type ErrorBody = { error?: string | { message?: string; code?: string }; message?: string; code?: string };
 type RawCompany = Record<string, unknown> & { id: string };
 type RawProvisioning = Record<string, unknown>;
+type RawQuote = Record<string, unknown>;
 
 function stringValue(value: unknown, fallback = '') { return typeof value === 'string' ? value : fallback; }
 function numberValue(value: unknown, fallback = 0) { return typeof value === 'number' && Number.isFinite(value) ? value : fallback; }
@@ -60,6 +61,26 @@ function mapProvisioning(row: RawProvisioning): ProvisioningState {
     errorMessage: nullableString(row.errorMessage ?? row.error_message),
     updatedAt: nullableString(row.updatedAt ?? row.updated_at),
     counts,
+  };
+}
+
+function mapQuote(row: RawQuote): Quote {
+  const rawLines = Array.isArray(row.Lines ?? row.lines) ? (row.Lines ?? row.lines) as RawQuote[] : [];
+  return {
+    id: stringValue(row.Id ?? row.id ?? row.SageId ?? row.sageId ?? row.QuoteNumber ?? row.quoteNumber),
+    quoteNumber: stringValue(row.QuoteNumber ?? row.quoteNumber),
+    date: stringValue(row.Date ?? row.date),
+    customerSageId: stringValue(row.CustomerId ?? row.customerId ?? row.CustomerSageId ?? row.customerSageId),
+    customerName: stringValue(row.CustomerName ?? row.customerName, 'Sage 50 customer'),
+    subtotal: numberValue(row.Subtotal ?? row.subtotal),
+    taxAmount: numberValue(row.TaxAmount ?? row.taxAmount),
+    total: numberValue(row.TotalAmount ?? row.totalAmount ?? row.Total ?? row.total),
+    lines: rawLines.map((line) => ({
+      sku: stringValue(line.Sku ?? line.sku),
+      quantity: numberValue(line.Quantity ?? line.quantity),
+      unitPrice: numberValue(line.UnitPrice ?? line.unitPrice),
+      lineTotal: numberValue(line.LineTotal ?? line.lineTotal),
+    })),
   };
 }
 
@@ -126,6 +147,7 @@ class SageBridgeAPI {
   async createQuote(data: { customerId: string; lines: Array<{ sku: string; quantity: number; unitPrice: number }> }): Promise<{ jobId: string; status: string }> {
     return this.request('/api/quotes', { method: 'POST', body: JSON.stringify({ quote: data, idempotencyKey: `quote-create-${crypto.randomUUID()}` }) }, false, true);
   }
+  async getQuotes(): Promise<Quote[]> { return (await this.request<{ quotes: RawQuote[] }>('/api/quotes', {}, false, true)).quotes.map(mapQuote); }
   async getInvoices(): Promise<Invoice[]> { return (await this.request<{ invoices: Invoice[] }>('/api/invoices', {}, false, true)).invoices; }
   async getInvoice(id: string): Promise<Invoice | null> { return (await this.getInvoices()).find((item) => item.invoiceNumber === id || item.id.toString() === id) || null; }
   async getCustomerInvoices(customerSageId: string): Promise<Invoice[]> { return (await this.getInvoices()).filter((item) => item.customerSageId === customerSageId); }
@@ -134,4 +156,4 @@ class SageBridgeAPI {
 }
 
 export const api = new SageBridgeAPI();
-export type { BootstrapState, Company, Connector, Customer, Invoice, PairingCode, Product, ProvisioningState } from './types';
+export type { BootstrapState, Company, Connector, Customer, Invoice, PairingCode, Product, ProvisioningState, Quote } from './types';
