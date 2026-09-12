@@ -35,4 +35,23 @@ const source = walk(new URL('..', import.meta.url).pathname)
   .map((file) => readFileSync(file, 'utf8')).join('\n');
 assert.ok(!/X-API-Key/i.test(source), 'legacy X-API-Key found in source');
 assert.ok(!/universl_main_sage50bridge2026/.test(source), 'legacy API credential found in source');
+
+// The provisioning state machine and job status enum are defined by
+// sagebridge-api (src/handlers/phase1.ts PROVISIONING_STATES and
+// src/handlers/connector.ts / jobs.ts). This frontend has no automated way
+// to read that sibling repo, so the canonical lists are pinned here; keep
+// them in sync by hand if the backend's enums change.
+const PROVISIONING_STATES = ['awaiting_connector','connector_connected','checking_sage','company_selected','provisioning','syncing_customers','syncing_invoices','syncing_products','syncing_quotes','finalizing','ready','failed'];
+const connectorSetup = readFileSync(new URL('../components/ConnectorSetup.tsx', import.meta.url).pathname, 'utf8');
+for (const state of PROVISIONING_STATES) {
+  assert.ok(types.includes(`'${state}'`), `lib/types.ts ProvisioningStatus is missing '${state}'`);
+  if (state !== 'failed') assert.ok(connectorSetup.includes(`'${state}'`), `ConnectorSetup STAGES is missing '${state}'`);
+}
+assert.ok(api.includes('startProvisioning'), 'lib/api.ts is missing startProvisioning()');
+assert.ok(connectorSetup.includes('startProvisioning'), 'ConnectorSetup does not call startProvisioning()');
+
+const JOB_STATUSES = ['pending', 'claimed', 'running', 'succeeded', 'failed'];
+for (const status of JOB_STATUSES) assert.ok(types.includes(`'${status}'`), `lib/types.ts JobStatus is missing '${status}'`);
+assert.ok(!/status\s*===\s*'processing'/.test(source), "source checks for a job status of 'processing', which the API never sends");
+
 console.log('Frontend API contract assertions passed.');
