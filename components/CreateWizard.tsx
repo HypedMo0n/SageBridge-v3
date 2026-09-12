@@ -177,7 +177,7 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
       setMessage('Waiting for Sage 50 connector…');
       for (let attempt = 0; attempt < 60; attempt += 1) {
         const job = await api.getJobStatus(jobId);
-        setMessage(job.status === 'processing' ? 'Sage 50 is creating the quote…' : 'Waiting for Sage 50 connector…');
+        setMessage(job.status === 'claimed' || job.status === 'running' ? 'Sage 50 is creating the quote…' : 'Waiting for Sage 50 connector…');
         if (job.status === 'failed') throw new Error(job.error || 'Sage 50 rejected the quote');
         if (job.status === 'succeeded') {
           setMessage(`Quote ${job.resource?.id || ''} created in Sage 50`);

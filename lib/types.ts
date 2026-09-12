@@ -53,11 +53,16 @@ export interface Organization {
 }
 
 export type ProvisioningStatus =
-  | 'created'
   | 'awaiting_connector'
-  | 'pairing'
-  | 'connected'
-  | 'initial_sync'
+  | 'connector_connected'
+  | 'checking_sage'
+  | 'company_selected'
+  | 'provisioning'
+  | 'syncing_customers'
+  | 'syncing_invoices'
+  | 'syncing_products'
+  | 'syncing_quotes'
+  | 'finalizing'
   | 'ready'
   | 'failed';
 
@@ -119,7 +124,7 @@ export interface MeState {
 
 export interface JobStatus {
   jobId: string;
-  status: 'pending' | 'processing' | 'succeeded' | 'failed';
+  status: 'pending' | 'claimed' | 'running' | 'succeeded' | 'failed';
   resource?: { type: string; id: string };
   error?: string;
 }

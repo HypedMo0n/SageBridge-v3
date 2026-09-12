@@ -54,7 +54,7 @@ function mapProvisioning(row: RawProvisioning): ProvisioningState {
   const rawCounts = row.counts && typeof row.counts === 'object' ? row.counts as Record<string, unknown> : {};
   const counts = Object.fromEntries(Object.entries(rawCounts).filter((entry): entry is [string, number] => typeof entry[1] === 'number'));
   return {
-    state: stringValue(row.state, 'created') as ProvisioningStatus,
+    state: stringValue(row.state, 'awaiting_connector') as ProvisioningStatus,
     progress: Math.max(0, Math.min(100, numberValue(row.progress))),
     errorCode: nullableString(row.errorCode ?? row.error_code),
     errorMessage: nullableString(row.errorMessage ?? row.error_message),
@@ -116,6 +116,11 @@ class SageBridgeAPI {
   }
 
   async revokeConnector(id: string): Promise<void> { await this.request(`/api/connectors/${encodeURIComponent(id)}/revoke`, { method: 'POST' }); }
+
+  async startProvisioning(companyId: string): Promise<ProvisioningState> {
+    const response = await this.request<{ provisioning: RawProvisioning }>(`/api/companies/${encodeURIComponent(companyId)}/provisioning`, { method: 'POST' });
+    return mapProvisioning(response.provisioning);
+  }
 
   async getCustomers(): Promise<Customer[]> { return (await this.request<{ customers: Customer[] }>('/api/customers', {}, false, true)).customers; }
   async getCustomer(id: string): Promise<Customer | null> { return (await this.getCustomers()).find((item) => item.sageId === id || item.id.toString() === id) || null; }

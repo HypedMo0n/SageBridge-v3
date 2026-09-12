@@ -76,7 +76,7 @@ export default function NewCustomerPage() {
         if (status.status === 'pending') {
           setStage('queued');
           setJobStatus('Waiting for the SageBridge connector');
-        } else if (status.status === 'processing') {
+        } else if (status.status === 'claimed' || status.status === 'running') {
           setStage('processing');
           setJobStatus('Sage 50 is creating the customer');
         } else if (status.status === 'succeeded') {
