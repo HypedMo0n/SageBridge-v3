@@ -54,4 +54,10 @@ const JOB_STATUSES = ['pending', 'claimed', 'running', 'succeeded', 'failed'];
 for (const status of JOB_STATUSES) assert.ok(types.includes(`'${status}'`), `lib/types.ts JobStatus is missing '${status}'`);
 assert.ok(!/status\s*===\s*'processing'/.test(source), "source checks for a job status of 'processing', which the API never sends");
 
+assert.ok(api.includes("'/api/invoices'"), 'lib/api.ts is missing the POST /api/invoices route');
+assert.ok(api.includes('createInvoice'), 'lib/api.ts is missing createInvoice()');
+const createWizard = readFileSync(new URL('../components/CreateWizard.tsx', import.meta.url).pathname, 'utf8');
+assert.ok(createWizard.includes('api.createInvoice'), 'CreateWizard does not call api.createInvoice()');
+assert.ok(!/invoice posting (is|awaits)/i.test(source), 'source still claims invoice posting is unavailable');
+
 console.log('Frontend API contract assertions passed.');

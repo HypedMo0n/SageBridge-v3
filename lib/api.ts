@@ -131,6 +131,9 @@ class SageBridgeAPI {
   async createQuote(data: { customerId: string; lines: Array<{ sku: string; quantity: number; unitPrice: number }> }): Promise<{ jobId: string; status: string }> {
     return this.request('/api/quotes', { method: 'POST', body: JSON.stringify({ quote: data, idempotencyKey: `quote-create-${crypto.randomUUID()}` }) }, false, true);
   }
+  async createInvoice(data: { customerId: string; lines: Array<{ sku: string; quantity: number; unitPrice: number }> }): Promise<{ jobId: string; status: string }> {
+    return this.request('/api/invoices', { method: 'POST', body: JSON.stringify({ invoice: data, idempotencyKey: `invoice-create-${crypto.randomUUID()}` }) }, false, true);
+  }
   async getInvoices(): Promise<Invoice[]> { return (await this.request<{ invoices: Invoice[] }>('/api/invoices', {}, false, true)).invoices; }
   async getInvoice(id: string): Promise<Invoice | null> { return (await this.getInvoices()).find((item) => item.invoiceNumber === id || item.id.toString() === id) || null; }
   async getCustomerInvoices(customerSageId: string): Promise<Invoice[]> { return (await this.getInvoices()).filter((item) => item.customerSageId === customerSageId); }
