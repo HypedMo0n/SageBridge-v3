@@ -175,9 +175,29 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
       for (let attempt = 0; attempt < 60; attempt += 1) {
         const job = await api.getJobStatus(jobId);
         setMessage(job.status === 'claimed' || job.status === 'running' ? `Sage 50 is creating the ${kind}…` : 'Waiting for Sage 50 connector…');
-        if (job.status === 'failed') throw new Error(job.error || `Sage 50 rejected the ${kind}`);
+        if (job.status === 'failed') {
+          // A connector that doesn't implement this action yet (an
+          // outdated machine build) reports this exact real error - a
+          // genuine, current capability gap, not a permanent hardcoded
+          // claim, so it gets the required honest copy instead of the raw
+          // exception text. Every other failure surfaces verbatim.
+          if (kind === 'invoice' && /not implemented/i.test(job.error || '')) {
+            throw new Error('Invoice posting is temporarily unavailable.');
+          }
+          throw new Error(job.error || `Sage 50 rejected the ${kind}`);
+        }
         if (job.status === 'succeeded') {
-          setMessage(`${kind === 'quote' ? 'Quote' : 'Invoice'} ${job.resource?.id || ''} created in Sage 50`);
+          const createdId = job.resource?.id || '';
+          setMessage(`${kind === 'quote' ? 'Quote' : 'Invoice'} ${createdId} created in Sage 50`);
+          if (kind === 'invoice' && createdId) {
+            // Best-effort read-back: the record only appears once the
+            // connector's next full sync picks it up, so a miss here just
+            // means "not synced yet," not a failure - the base confirmation
+            // above already stands on its own.
+            api.getInvoice(createdId).then((created) => {
+              if (created) setMessage(`Invoice ${created.invoiceNumber} created in Sage 50 - ${formatMoney(created.total)}`);
+            }).catch(() => {});
+          }
           setStep(4);
           return;
         }

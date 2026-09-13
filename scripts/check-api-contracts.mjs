@@ -58,7 +58,22 @@ assert.ok(api.includes("'/api/invoices'"), 'lib/api.ts is missing the POST /api/
 assert.ok(api.includes('createInvoice'), 'lib/api.ts is missing createInvoice()');
 const createWizard = readFileSync(new URL('../components/CreateWizard.tsx', import.meta.url).pathname, 'utf8');
 assert.ok(createWizard.includes('api.createInvoice'), 'CreateWizard does not call api.createInvoice()');
-assert.ok(!/invoice posting (is|awaits)/i.test(source), 'source still claims invoice posting is unavailable');
+// Guard against the specific stale hardcoded claims this app has carried
+// before ("connector doesn't support invoice.create", "only quotes can be
+// posted") - narrower than a blanket "invoice posting is" match, because
+// the real, capability-driven "Invoice posting is temporarily unavailable."
+// message below is legitimate and must NOT trip this guard.
+for (const stale of [/invoice posting is not supported/i, /only quotes can be posted/i, /unavailable in the current connector/i, /posting is disabled without faking/i])
+  assert.ok(!stale.test(source), `stale hardcoded invoice-blocking copy remains: ${stale}`);
+assert.ok(source.includes('Invoice posting is temporarily unavailable.'), 'missing the required capability-driven "temporarily unavailable" copy');
+
+// PDF export and email workflow: real endpoints, not client-side fakes.
+assert.ok(api.includes('getInvoicePdf'), 'lib/api.ts is missing getInvoicePdf()');
+assert.ok(api.includes('emailInvoice'), 'lib/api.ts is missing emailInvoice()');
+assert.ok(api.includes('getCapabilities'), 'lib/api.ts is missing getCapabilities()');
+assert.ok(api.includes('/pdf'), 'lib/api.ts is missing the invoice PDF route');
+assert.ok(api.includes('/email'), 'lib/api.ts is missing the invoice email route');
+assert.ok(api.includes("'/api/capabilities'"), 'lib/api.ts is missing the /api/capabilities route');
 
 // Regression guard: request() previously let a raw fetch() network failure
 // (no HTTP response at all) propagate as an unhandled browser-internal

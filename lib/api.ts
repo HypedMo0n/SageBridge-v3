@@ -1,5 +1,5 @@
 import { auth } from './firebase';
-import type { BootstrapState, Company, Connector, Customer, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus } from './types';
+import type { BootstrapState, Capabilities, Company, Connector, Customer, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sagebridge-api.cheikhmounirk.workers.dev';
 const COMPANY_STORAGE_KEY = 'sagebridge-company-id';
@@ -124,6 +124,36 @@ class SageBridgeAPI {
     return response.json() as Promise<T>;
   }
 
+  /**
+   * Like request(), but for a binary (non-JSON) response - used for the PDF
+   * export. Shares the same auth/retry/error-parsing behavior so a failed
+   * export surfaces the real server error instead of a blob of garbage.
+   */
+  private async requestBlob(endpoint: string, companyScoped = false, retried = false): Promise<{ blob: Blob; filename: string | null }> {
+    const user = auth.currentUser;
+    if (!user) throw new ApiError('Your session has ended. Please sign in again.', 401, 'auth/session-ended');
+    const token = await user.getIdToken(retried);
+    const companyId = companyScoped ? readCompanyId() : '';
+    if (companyScoped && !companyId) throw new ApiError('Select a company before continuing.', 400, 'COMPANY_REQUIRED');
+    let response: Response;
+    try {
+      response = await fetch(`${API_URL}${endpoint}`, {
+        headers: { Authorization: `Bearer ${token}`, ...(companyScoped ? { 'X-Company-Id': companyId } : {}) },
+      });
+    } catch (cause) {
+      console.error('Network request failed:', endpoint, cause);
+      throw new ApiError('Could not reach SageBridge. Check your connection and try again.', 0, 'network/unreachable');
+    }
+    if (response.status === 401 && !retried) return this.requestBlob(endpoint, companyScoped, true);
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as ErrorBody | null;
+      throw new ApiError((typeof body?.error === 'string' ? body.error : body?.message) || `Request failed (${response.status})`, response.status, body?.code);
+    }
+    const disposition = response.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] || null;
+    return { blob: await response.blob(), filename };
+  }
+
   async bootstrap(): Promise<BootstrapState> {
     const response = await this.request<Omit<BootstrapState, 'companies'> & { companies: RawCompany[] }>('/auth/bootstrap', { method: 'POST' });
     return { ...response, companies: response.companies.map(mapCompany) };
@@ -175,11 +205,25 @@ class SageBridgeAPI {
     return this.request('/api/invoices', { method: 'POST', body: JSON.stringify({ invoice: data, idempotencyKey: `invoice-create-${crypto.randomUUID()}` }) }, false, true);
   }
   async getInvoices(): Promise<Invoice[]> { return (await this.request<{ invoices: Invoice[] }>('/api/invoices', {}, false, true)).invoices; }
-  async getInvoice(id: string): Promise<Invoice | null> { return (await this.getInvoices()).find((item) => item.invoiceNumber === id || item.id.toString() === id) || null; }
+  async getInvoice(id: string): Promise<Invoice | null> {
+    try {
+      return (await this.request<{ invoice: Invoice }>(`/api/invoices/${encodeURIComponent(id)}`, {}, false, true)).invoice;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return null;
+      throw err;
+    }
+  }
+  async getInvoicePdf(id: string): Promise<{ blob: Blob; filename: string | null }> {
+    return this.requestBlob(`/api/invoices/${encodeURIComponent(id)}/pdf`, true);
+  }
+  async emailInvoice(id: string, data: { to?: string; subject?: string; message?: string }): Promise<{ sent: boolean; to: string }> {
+    return this.request(`/api/invoices/${encodeURIComponent(id)}/email`, { method: 'POST', body: JSON.stringify(data) }, false, true);
+  }
+  async getCapabilities(): Promise<Capabilities> { return this.request<Capabilities>('/api/capabilities'); }
   async getCustomerInvoices(customerSageId: string): Promise<Invoice[]> { return (await this.getInvoices()).filter((item) => item.customerSageId === customerSageId); }
   async getProducts(): Promise<Product[]> { const response = await this.request<{ all?: Product[]; products?: Product[] }>('/api/products', {}, false, true); return response.all || response.products || []; }
   async getProduct(id: string): Promise<Product | null> { return (await this.getProducts()).find((item) => item.sku === id || item.id.toString() === id) || null; }
 }
 
 export const api = new SageBridgeAPI();
-export type { BootstrapState, Company, Connector, Customer, Invoice, PairingCode, Product, ProvisioningState } from './types';
+export type { BootstrapState, Capabilities, Company, Connector, Customer, Invoice, PairingCode, Product, ProvisioningState } from './types';

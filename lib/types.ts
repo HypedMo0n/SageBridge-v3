@@ -24,6 +24,13 @@ export interface Invoice {
   status: string;
   customerSageId: string;
   customerName: string;
+  /** Only populated by the single-invoice GET (api.getInvoice), not the list. */
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+}
+
+export interface Capabilities {
+  email: boolean;
 }
 
 export interface Product {
