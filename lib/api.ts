@@ -133,6 +133,18 @@ class SageBridgeAPI {
     return response;
   }
 
+  async createInvoice(data: {
+    customerId: string;
+    lines: Array<{ sku: string; quantity: number; unitPrice: number }>;
+  }): Promise<{ jobId: string; status: string }> {
+    const idempotencyKey = `invoice-create-${Date.now()}-${crypto.randomUUID()}`;
+    const response = await this.request<{ jobId: string; status: string }>('/api/invoices', {
+      method: 'POST',
+      body: JSON.stringify({ invoice: data, idempotencyKey }),
+    });
+    return response;
+  }
+
   // Invoices
   async getInvoices(): Promise<Invoice[]> {
     const response = await this.request<{ invoices: Invoice[] }>('/api/invoices');
