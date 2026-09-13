@@ -1,5 +1,5 @@
 // API Configuration
-const API_URL = 'https://sagebridge-api.cheikhmounirk.workers.dev';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sagebridge-api-beta.cheikhmounirk.workers.dev';
 const API_KEY = 'universl_main_sage50bridge2026'; // Existing connector credential; preserve until server-side auth migration.
 
 // Types
