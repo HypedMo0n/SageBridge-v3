@@ -7,8 +7,10 @@ import { ArrowLeft, House, MagnifyingGlass, Files, DotsThreeOutline, Moon, Sun }
 const META: Record<string,[string,string]>={
  '/dashboard':['Universal Construction','Sage 50 · desktop connector'], '/search':['Search','Customers, invoices, products'], '/invoices':['Work','Invoices and quotes'], '/customers':['Customers','From the last Sage 50 sync'], '/products':['Products & services','From Sage 50'], '/reports':['Reports','Calculated from synced invoices'], '/sync':['Sync','Desktop connector status'], '/more':['More','Universal Construction'], '/settings':['Settings',''], '/pair':['Pair with Sage 50','Desktop connector']
 };
+const BARE_PATHS=['/login','/signup','/reset-password','/verify-email','/onboarding'];
 export function AppChrome({children}:{children:React.ReactNode}){
  const path=usePathname(), router=useRouter(); const [day,setDay]=useState(()=>typeof window!=='undefined'&&localStorage.getItem('sb-theme')==='day');
+ if(BARE_PATHS.includes(path)) return <div className={`app ${day?'sb-day':''}`}>{children}</div>;
  const base=Object.keys(META).sort((a,b)=>b.length-a.length).find(k=>path===k||path.startsWith(k+'/'))||'/dashboard';
  let [title,sub]=META[base]; if(path.startsWith('/invoices/')&&path!='/invoices/new'){title=decodeURIComponent(path.split('/').pop()||'Invoice');sub='Invoice'}
  if(path.startsWith('/customers/')){title='Customer';sub='Sage 50 customer'} if(path.endsWith('/new')){title=path.includes('quotes')?'New quote':'New invoice';sub='Four-step create flow'}

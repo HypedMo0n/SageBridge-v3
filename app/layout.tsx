@@ -1,4 +1,4 @@
-import type {Metadata,Viewport} from 'next';import {Inter} from 'next/font/google';import './globals.css';import {AppChrome} from '@/components/AppChrome';
+import type {Metadata,Viewport} from 'next';import {Inter} from 'next/font/google';import './globals.css';import {AppChrome} from '@/components/AppChrome';import {AuthProvider} from '@/components/AuthProvider';
 const inter=Inter({subsets:['latin'],weight:['400','500'],variable:'--font-inter'});
 export const metadata:Metadata={title:'SageBridge',description:'Universal Construction · Sage 50 mobile companion'};export const viewport:Viewport={width:'device-width',initialScale:1,viewportFit:'cover',themeColor:'#161826'};
-export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en" className={inter.variable}><body><a href="#content" className="sr-only focus:not-sr-only">Skip to content</a><AppChrome>{children}</AppChrome></body></html>}
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="en" className={inter.variable}><body><a href="#content" className="sr-only focus:not-sr-only">Skip to content</a><AuthProvider><AppChrome>{children}</AppChrome></AuthProvider></body></html>}
