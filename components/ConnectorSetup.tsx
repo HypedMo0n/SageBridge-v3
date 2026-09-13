@@ -1,16 +1,21 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { api, ApiError, type PairingCode, type ProvisioningState } from '@/lib/api';
 
 const STAGES = [
-  ['created', 'Workspace created'],
   ['awaiting_connector', 'Waiting for connector'],
-  ['pairing', 'Pairing connector'],
-  ['connected', 'Connector connected'],
-  ['initial_sync', 'Importing Sage data'],
+  ['connector_connected', 'Connector connected'],
+  ['checking_sage', 'Checking Sage 50 connection'],
+  ['company_selected', 'Company selected'],
+  ['provisioning', 'Setting up workspace'],
+  ['syncing_customers', 'Importing customers'],
+  ['syncing_invoices', 'Importing invoices'],
+  ['syncing_products', 'Importing products'],
+  ['syncing_quotes', 'Importing quotes'],
+  ['finalizing', 'Finalizing setup'],
   ['ready', 'Workspace ready'],
 ] as const;
 
@@ -23,26 +28,51 @@ export function ConnectorSetup({ onboarding = false }: { onboarding?: boolean })
   const [pairing, setPairing] = useState<PairingCode | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
   const [now, setNow] = useState(() => Date.now());
+  const startingRef = useRef(false);
 
   const load = useCallback(async () => {
-    if (!company) { setProvisioning(null); return; }
-    setProvisioning(await api.getProvisioning(company.id));
+    if (!company) { setProvisioning(null); return null; }
+    const next = await api.getProvisioning(company.id);
+    setProvisioning(next);
+    return next;
   }, [company]);
+
+  const runStartProvisioning = useCallback(async () => {
+    if (!company || startingRef.current) return;
+    startingRef.current = true;
+    setStarting(true);
+    try { setProvisioning(await api.startProvisioning(company.id)); }
+    finally { startingRef.current = false; setStarting(false); }
+  }, [company]);
+
+  const autoStart = useCallback((next?: ProvisioningState | null) => {
+    if (next?.state === 'connector_connected') runStartProvisioning().catch(() => { /* the next poll retries */ });
+  }, [runStartProvisioning]);
+
+  async function retryProvisioning() {
+    setError('');
+    try { await runStartProvisioning(); }
+    catch (reason) { setError(errorText(reason)); }
+  }
 
   useEffect(() => {
     let active = true;
     const timer = window.setTimeout(() => {
-      load().catch((reason) => { if (active) setError(errorText(reason)); }).finally(() => { if (active) setLoading(false); });
+      load().then((next) => { if (active) autoStart(next); }).catch((reason) => { if (active) setError(errorText(reason)); }).finally(() => { if (active) setLoading(false); });
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [load]);
+  }, [load, autoStart]);
   useEffect(() => {
-    if (!pairing && !['pairing', 'connected', 'initial_sync'].includes(provisioning?.state || '')) return;
-    const timer = window.setInterval(() => { setNow(Date.now()); Promise.all([load(), refreshWorkspace()]).catch((reason) => setError(errorText(reason))); }, 5000);
+    if (!pairing && (!provisioning?.state || provisioning.state === 'ready')) return;
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+      Promise.all([load(), refreshWorkspace()]).then(([next]) => autoStart(next)).catch((reason) => setError(errorText(reason)));
+    }, 5000);
     return () => window.clearInterval(timer);
-  }, [load, pairing, provisioning?.state, refreshWorkspace]);
+  }, [load, autoStart, pairing, provisioning?.state, refreshWorkspace]);
 
   const expiry = pairing ? new Date(pairing.expiresAt).getTime() : 0;
   const expired = !!pairing && (!Number.isFinite(expiry) || expiry <= now);
@@ -74,7 +104,7 @@ export function ConnectorSetup({ onboarding = false }: { onboarding?: boolean })
     <section className="card">
       <p className="kicker">2 · Provision workspace</p><h2>Company data</h2>
       {!provisioning && <p className="notice">Provisioning status has not been reported.</p>}
-      {provisioning && <><span className={`status-pill status-${provisioning.state}`}>{provisioning.state.replaceAll('_', ' ')}</span><p className="notice">{provisioning.progress}% complete · Updated {when(provisioning.updatedAt)}</p>{provisioning.errorMessage && <div className="error-box">{provisioning.errorMessage}{provisioning.errorCode ? ` (${provisioning.errorCode})` : ''}</div>}<div className="progress-list">{STAGES.map(([state, label], index) => <div className="row" key={state}><span className={`step-dot step-${provisioning.state === 'failed' && index === currentStage ? 'failed' : index < currentStage || provisioning.state === 'ready' ? 'complete' : index === currentStage ? 'in_progress' : 'pending'}`} /><span className="row-main"><span className="row-title">{label}</span></span></div>)}</div>{counts.length > 0 && <div className="progress-list">{counts.map(([resource, count]) => <div className="row" key={resource}><span className="row-main row-title">{resource.replaceAll('_', ' ')}</span><span className="row-sub">{count}</span></div>)}</div>}</>}
+      {provisioning && <><span className={`status-pill status-${provisioning.state}`}>{provisioning.state.replaceAll('_', ' ')}</span><p className="notice">{provisioning.progress}% complete · Updated {when(provisioning.updatedAt)}</p>{provisioning.errorMessage && <div className="error-box">{provisioning.errorMessage}{provisioning.errorCode ? ` (${provisioning.errorCode})` : ''}</div>}{provisioning.state === 'failed' && <button className="btn btn-block" onClick={retryProvisioning} disabled={starting}>{starting ? 'Retrying…' : 'Retry provisioning'}</button>}<div className="progress-list">{STAGES.map(([state, label], index) => <div className="row" key={state}><span className={`step-dot step-${provisioning.state === 'failed' && index === currentStage ? 'failed' : index < currentStage || provisioning.state === 'ready' ? 'complete' : index === currentStage ? 'in_progress' : 'pending'}`} /><span className="row-main"><span className="row-title">{label}</span></span></div>)}</div>{counts.length > 0 && <div className="progress-list">{counts.map(([resource, count]) => <div className="row" key={resource}><span className="row-main row-title">{resource.replaceAll('_', ' ')}</span><span className="row-sub">{count}</span></div>)}</div>}</>}
     </section>
 
     <section className="card"><p className="kicker">Connector</p><div className="row"><span className={`connector-dot connector-${company.online ? 'online' : 'offline'}`} /><span className="row-main"><span className="row-title">{company.connectorStatus.replaceAll('_', ' ')}</span><span className="row-sub">{company.online ? 'Online' : 'Offline'} · Last seen {when(company.lastSeenAt)}</span></span></div><p className="notice">Connector access can be revoked when a connector record is available from the secured API.</p></section>

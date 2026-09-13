@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:contracts": "node scripts/check-api-contracts.mjs"
+    "test:contracts": "node scripts/check-api-contracts.mjs",
+    "test:aging": "tsx scripts/check-aging-buckets.ts",
+    "test:pulse": "tsx scripts/check-pulse.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
@@ -24,6 +26,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }

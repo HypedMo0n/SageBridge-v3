@@ -1,5 +1,5 @@
 import { auth } from './firebase';
-import type { BootstrapState, Company, Customer, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus, Quote } from './types';
+import type { BootstrapState, Capabilities, Company, Connector, Customer, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus, Quote } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sagebridge-api.cheikhmounirk.workers.dev';
 const COMPANY_STORAGE_KEY = 'sagebridge-company-id';
@@ -32,6 +32,7 @@ type ErrorBody = { error?: string | { message?: string; code?: string }; message
 type RawCompany = Record<string, unknown> & { id: string };
 type RawProvisioning = Record<string, unknown>;
 type RawQuote = Record<string, unknown>;
+type RawConnector = Record<string, unknown> & { id: string };
 
 function stringValue(value: unknown, fallback = '') { return typeof value === 'string' ? value : fallback; }
 function numberValue(value: unknown, fallback = 0) { return typeof value === 'number' && Number.isFinite(value) ? value : fallback; }
@@ -51,11 +52,30 @@ function mapCompany(row: RawCompany): Company {
   };
 }
 
+function mapConnector(row: RawConnector, companyId: string): Connector {
+  // "revoked" (an explicit, permanent, admin-driven state) is distinct from
+  // liveness (online/offline) - a revoked connector is never "offline", it
+  // is "not paired" and must not be shown as if it might come back online.
+  const revoked = !!(row.revokedAt ?? row.revoked_at) || row.status === 'revoked';
+  return {
+    id: row.id,
+    name: stringValue(row.displayName ?? row.display_name, 'Sage 50 connector'),
+    machineName: nullableString(row.machineName ?? row.machine_name),
+    companyId,
+    status: revoked ? 'revoked' : row.online === true ? 'online' : 'offline',
+    lastSeenAt: nullableString(row.lastSeenAt ?? row.last_seen_at),
+    lastSyncAt: nullableString(row.lastSyncAt ?? row.last_sync_at),
+    pairedAt: nullableString(row.createdAt ?? row.created_at),
+    revokedAt: nullableString(row.revokedAt ?? row.revoked_at),
+    version: nullableString(row.version),
+  };
+}
+
 function mapProvisioning(row: RawProvisioning): ProvisioningState {
   const rawCounts = row.counts && typeof row.counts === 'object' ? row.counts as Record<string, unknown> : {};
   const counts = Object.fromEntries(Object.entries(rawCounts).filter((entry): entry is [string, number] => typeof entry[1] === 'number'));
   return {
-    state: stringValue(row.state, 'created') as ProvisioningStatus,
+    state: stringValue(row.state, 'awaiting_connector') as ProvisioningStatus,
     progress: Math.max(0, Math.min(100, numberValue(row.progress))),
     errorCode: nullableString(row.errorCode ?? row.error_code),
     errorMessage: nullableString(row.errorMessage ?? row.error_message),
@@ -91,15 +111,30 @@ class SageBridgeAPI {
     const token = await user.getIdToken(retried);
     const companyId = companyScoped ? readCompanyId() : '';
     if (companyScoped && !companyId) throw new ApiError('Select a company before continuing.', 400, 'COMPANY_REQUIRED');
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-        ...(companyScoped ? { 'X-Company-Id': companyId } : {}),
-        ...options.headers,
-      },
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          ...(companyScoped ? { 'X-Company-Id': companyId } : {}),
+          ...options.headers,
+        },
+      });
+    } catch (cause) {
+      // fetch() rejects here only when the request never got a response at
+      // all (DNS/connection failure, CORS preflight rejection, offline).
+      // The raw exception's message is a browser-internal string ("Load
+      // failed" on Safari, "Failed to fetch" on Chrome, "NetworkError..."
+      // on Firefox) that is not actionable and not consistent across
+      // browsers - every caller's generic error display otherwise shows
+      // that raw text verbatim. Normalize it into one clear, actionable
+      // ApiError instead, and keep the original in the console for
+      // debugging.
+      console.error('Network request failed:', endpoint, cause);
+      throw new ApiError('Could not reach SageBridge. Check your connection and try again.', 0, 'network/unreachable');
+    }
     if (response.status === 401 && !retried) return this.request<T>(endpoint, options, true, companyScoped);
     if (!response.ok) {
       const body = await response.json().catch(() => null) as ErrorBody | null;
@@ -108,6 +143,36 @@ class SageBridgeAPI {
     }
     if (response.status === 204) return undefined as T;
     return response.json() as Promise<T>;
+  }
+
+  /**
+   * Like request(), but for a binary (non-JSON) response - used for the PDF
+   * export. Shares the same auth/retry/error-parsing behavior so a failed
+   * export surfaces the real server error instead of a blob of garbage.
+   */
+  private async requestBlob(endpoint: string, companyScoped = false, retried = false): Promise<{ blob: Blob; filename: string | null }> {
+    const user = auth.currentUser;
+    if (!user) throw new ApiError('Your session has ended. Please sign in again.', 401, 'auth/session-ended');
+    const token = await user.getIdToken(retried);
+    const companyId = companyScoped ? readCompanyId() : '';
+    if (companyScoped && !companyId) throw new ApiError('Select a company before continuing.', 400, 'COMPANY_REQUIRED');
+    let response: Response;
+    try {
+      response = await fetch(`${API_URL}${endpoint}`, {
+        headers: { Authorization: `Bearer ${token}`, ...(companyScoped ? { 'X-Company-Id': companyId } : {}) },
+      });
+    } catch (cause) {
+      console.error('Network request failed:', endpoint, cause);
+      throw new ApiError('Could not reach SageBridge. Check your connection and try again.', 0, 'network/unreachable');
+    }
+    if (response.status === 401 && !retried) return this.requestBlob(endpoint, companyScoped, true);
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as ErrorBody | null;
+      throw new ApiError((typeof body?.error === 'string' ? body.error : body?.message) || `Request failed (${response.status})`, response.status, body?.code);
+    }
+    const disposition = response.headers.get('content-disposition') || '';
+    const filename = disposition.match(/filename="?([^";]+)"?/)?.[1] || null;
+    return { blob: await response.blob(), filename };
   }
 
   async bootstrap(): Promise<BootstrapState> {
@@ -136,7 +201,17 @@ class SageBridgeAPI {
     return mapProvisioning(response.provisioning);
   }
 
+  async getConnectors(companyId: string): Promise<Connector[]> {
+    const response = await this.request<{ connectors: RawConnector[] }>(`/api/companies/${encodeURIComponent(companyId)}/connectors`);
+    return response.connectors.map((row) => mapConnector(row, companyId));
+  }
+
   async revokeConnector(id: string): Promise<void> { await this.request(`/api/connectors/${encodeURIComponent(id)}/revoke`, { method: 'POST' }); }
+
+  async startProvisioning(companyId: string): Promise<ProvisioningState> {
+    const response = await this.request<{ provisioning: RawProvisioning }>(`/api/companies/${encodeURIComponent(companyId)}/provisioning`, { method: 'POST' });
+    return mapProvisioning(response.provisioning);
+  }
 
   async getCustomers(): Promise<Customer[]> { return (await this.request<{ customers: Customer[] }>('/api/customers', {}, false, true)).customers; }
   async getCustomer(id: string): Promise<Customer | null> { return (await this.getCustomers()).find((item) => item.sageId === id || item.id.toString() === id) || null; }
@@ -148,12 +223,29 @@ class SageBridgeAPI {
     return this.request('/api/quotes', { method: 'POST', body: JSON.stringify({ quote: data, idempotencyKey: `quote-create-${crypto.randomUUID()}` }) }, false, true);
   }
   async getQuotes(): Promise<Quote[]> { return (await this.request<{ quotes: RawQuote[] }>('/api/quotes', {}, false, true)).quotes.map(mapQuote); }
+  async createInvoice(data: { customerId: string; lines: Array<{ sku: string; quantity: number; unitPrice: number }> }): Promise<{ jobId: string; status: string }> {
+    return this.request('/api/invoices', { method: 'POST', body: JSON.stringify({ invoice: data, idempotencyKey: `invoice-create-${crypto.randomUUID()}` }) }, false, true);
+  }
   async getInvoices(): Promise<Invoice[]> { return (await this.request<{ invoices: Invoice[] }>('/api/invoices', {}, false, true)).invoices; }
-  async getInvoice(id: string): Promise<Invoice | null> { return (await this.getInvoices()).find((item) => item.invoiceNumber === id || item.id.toString() === id) || null; }
+  async getInvoice(id: string): Promise<Invoice | null> {
+    try {
+      return (await this.request<{ invoice: Invoice }>(`/api/invoices/${encodeURIComponent(id)}`, {}, false, true)).invoice;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return null;
+      throw err;
+    }
+  }
+  async getInvoicePdf(id: string): Promise<{ blob: Blob; filename: string | null }> {
+    return this.requestBlob(`/api/invoices/${encodeURIComponent(id)}/pdf`, true);
+  }
+  async emailInvoice(id: string, data: { to?: string; subject?: string; message?: string }): Promise<{ sent: boolean; to: string }> {
+    return this.request(`/api/invoices/${encodeURIComponent(id)}/email`, { method: 'POST', body: JSON.stringify(data) }, false, true);
+  }
+  async getCapabilities(): Promise<Capabilities> { return this.request<Capabilities>('/api/capabilities'); }
   async getCustomerInvoices(customerSageId: string): Promise<Invoice[]> { return (await this.getInvoices()).filter((item) => item.customerSageId === customerSageId); }
   async getProducts(): Promise<Product[]> { const response = await this.request<{ all?: Product[]; products?: Product[] }>('/api/products', {}, false, true); return response.all || response.products || []; }
   async getProduct(id: string): Promise<Product | null> { return (await this.getProducts()).find((item) => item.sku === id || item.id.toString() === id) || null; }
 }
 
 export const api = new SageBridgeAPI();
-export type { BootstrapState, Company, Connector, Customer, Invoice, PairingCode, Product, ProvisioningState, Quote } from './types';
+export type { BootstrapState, Capabilities, Company, Connector, Customer, Invoice, PairingCode, Product, ProvisioningState, Quote } from './types';

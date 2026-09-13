@@ -24,6 +24,13 @@ export interface Invoice {
   status: string;
   customerSageId: string;
   customerName: string;
+  /** Only populated by the single-invoice GET (api.getInvoice), not the list. */
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+}
+
+export interface Capabilities {
+  email: boolean;
 }
 
 export interface QuoteLine {
@@ -72,11 +79,16 @@ export interface Organization {
 }
 
 export type ProvisioningStatus =
-  | 'created'
   | 'awaiting_connector'
-  | 'pairing'
-  | 'connected'
-  | 'initial_sync'
+  | 'connector_connected'
+  | 'checking_sage'
+  | 'company_selected'
+  | 'provisioning'
+  | 'syncing_customers'
+  | 'syncing_invoices'
+  | 'syncing_products'
+  | 'syncing_quotes'
+  | 'finalizing'
   | 'ready'
   | 'failed';
 
@@ -112,9 +124,13 @@ export type ConnectorStatus = 'online' | 'offline' | 'revoked' | 'unknown';
 export interface Connector {
   id: string;
   name: string;
+  /** The paired machine's own reported name, e.g. "OFFICE-PC" - distinct from `name` (a display label). */
+  machineName: string | null;
   companyId: string;
   status: ConnectorStatus;
   lastSeenAt: string | null;
+  /** Last time this connector completed a sync - distinct from lastSeenAt (heartbeat liveness). */
+  lastSyncAt: string | null;
   pairedAt?: string | null;
   revokedAt?: string | null;
   version?: string | null;
@@ -138,7 +154,7 @@ export interface MeState {
 
 export interface JobStatus {
   jobId: string;
-  status: 'pending' | 'processing' | 'succeeded' | 'failed';
+  status: 'pending' | 'claimed' | 'running' | 'succeeded' | 'failed';
   resource?: { type: string; id: string };
   error?: string;
 }

@@ -167,20 +167,37 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
     setError('');
     if (!canAdvance) return;
     if (step < 3) { setStep((value) => value + 1); return; }
-    if (kind === 'invoice') {
-      setError('Invoice posting is not supported by the connector API yet. Switch to Quote to post this document safely.');
-      return;
-    }
     setSending(true);
     try {
-      const { jobId } = await api.createQuote({ customerId, lines: cart.map((line) => ({ sku: line.sku, quantity: line.qty, unitPrice: line.price })) });
+      const payload = { customerId, lines: cart.map((line) => ({ sku: line.sku, quantity: line.qty, unitPrice: line.price })) };
+      const { jobId } = kind === 'quote' ? await api.createQuote(payload) : await api.createInvoice(payload);
       setMessage('Waiting for Sage 50 connector…');
       for (let attempt = 0; attempt < 60; attempt += 1) {
         const job = await api.getJobStatus(jobId);
-        setMessage(job.status === 'processing' ? 'Sage 50 is creating the quote…' : 'Waiting for Sage 50 connector…');
-        if (job.status === 'failed') throw new Error(job.error || 'Sage 50 rejected the quote');
+        setMessage(job.status === 'claimed' || job.status === 'running' ? `Sage 50 is creating the ${kind}…` : 'Waiting for Sage 50 connector…');
+        if (job.status === 'failed') {
+          // A connector that doesn't implement this action yet (an
+          // outdated machine build) reports this exact real error - a
+          // genuine, current capability gap, not a permanent hardcoded
+          // claim, so it gets the required honest copy instead of the raw
+          // exception text. Every other failure surfaces verbatim.
+          if (kind === 'invoice' && /not implemented/i.test(job.error || '')) {
+            throw new Error('Invoice posting is temporarily unavailable.');
+          }
+          throw new Error(job.error || `Sage 50 rejected the ${kind}`);
+        }
         if (job.status === 'succeeded') {
-          setMessage(`Quote ${job.resource?.id || ''} created in Sage 50`);
+          const createdId = job.resource?.id || '';
+          setMessage(`${kind === 'quote' ? 'Quote' : 'Invoice'} ${createdId} created in Sage 50`);
+          if (kind === 'invoice' && createdId) {
+            // Best-effort read-back: the record only appears once the
+            // connector's next full sync picks it up, so a miss here just
+            // means "not synced yet," not a failure - the base confirmation
+            // above already stands on its own.
+            api.getInvoice(createdId).then((created) => {
+              if (created) setMessage(`Invoice ${created.invoiceNumber} created in Sage 50 - ${formatMoney(created.total)}`);
+            }).catch(() => {});
+          }
           setStep(4);
           return;
         }
@@ -188,7 +205,7 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
       }
       throw new Error('Timed out waiting for Sage 50. Check the connector.');
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : 'Quote creation failed');
+      setError(reason instanceof Error ? reason.message : `${kind === 'quote' ? 'Quote' : 'Invoice'} creation failed`);
     } finally {
       setSending(false);
     }
@@ -209,7 +226,7 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
           </div>
           <SearchPicker label="Customer" placeholder="Choose a customer" searchPlaceholder="Search customers…" items={customerItems} selectedId={customerId} onSelect={setCustomerId} />
         </section>
-        <aside className="wizard-aside card"><span className="kicker">Document</span><h2>{kind === 'quote' ? 'Quote' : 'Invoice'} draft</h2><p className="notice">Select one customer. Search results stay collapsed until you need them.</p>{kind === 'invoice' && <p className="availability-note">Invoice posting is unavailable in the current connector. You can prepare and review it, but only quotes can be posted.</p>}</aside>
+        <aside className="wizard-aside card"><span className="kicker">Document</span><h2>{kind === 'quote' ? 'Quote' : 'Invoice'} draft</h2><p className="notice">Select one customer. Search results stay collapsed until you need them.</p></aside>
       </div>}
 
       {step === 1 && <div className="wizard-grid wizard-grid-lines">
@@ -237,11 +254,11 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
         <section className="wizard-aside"><h2 className="kicker">Payment terms</h2><div className="chips section">{['Due on receipt', 'Net 15', 'Net 30'].map((value) => <button className={`chip ${value === terms ? 'active' : ''}`} onClick={() => setTerms(value)} key={value}>{value}</button>)}</div><label className="kicker" htmlFor="job-note">Note on the job</label><textarea id="job-note" className="textarea" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Visible to the customer" /></section>
       </div>}
 
-      {step === 3 && <div className="wizard-grid"><section className="card hero"><span className="kicker">Ready to post</span><div className="hero-money money">{formatMoney(total)}</div><p className="notice">{kind === 'quote' ? 'This quote will be posted through the real Sage 50 connector and its job status will be polled.' : 'The current connector does not expose invoice.create. Posting is disabled without faking success.'}</p></section><aside className="wizard-aside card"><span className="kicker">Summary</span><h2>{customer?.name}</h2><p className="notice">{cart.length} line{cart.length === 1 ? '' : 's'} · {terms}</p>{note && <p className="notice">“{note}”</p>}</aside></div>}
+      {step === 3 && <div className="wizard-grid"><section className="card hero"><span className="kicker">Ready to post</span><div className="hero-money money">{formatMoney(total)}</div><p className="notice">This {kind} will be posted through the real Sage 50 connector and its job status will be polled.</p></section><aside className="wizard-aside card"><span className="kicker">Summary</span><h2>{customer?.name}</h2><p className="notice">{cart.length} line{cart.length === 1 ? '' : 's'} · {terms}</p>{note && <p className="notice">“{note}”</p>}</aside></div>}
 
       {step === 4 && <div className="empty"><CheckCircle size={64} color="var(--color-accent)" /><h2>{message}</h2><p className="notice">The connector confirmed the write.</p><button onClick={() => router.replace('/dashboard')} className="btn btn-block">Back to home</button></div>}
 
-      {step < 4 && <div className="wizard-actions"><button type="button" className="btn" onClick={() => setStep((value) => Math.max(0, value - 1))} disabled={step === 0 || sending}>Back</button><button type="button" className="btn btn-primary" disabled={!canAdvance || sending || (step === 3 && kind === 'invoice')} onClick={advance}>{sending ? message : <>{step === 3 && kind === 'quote' && <PaperPlaneTilt />} {step === 0 ? 'Add lines' : step === 1 ? 'Review' : step === 2 ? 'Posting options' : kind === 'quote' ? 'Post quote' : 'Invoice posting unavailable'}</>}</button></div>}
+      {step < 4 && <div className="wizard-actions"><button type="button" className="btn" onClick={() => setStep((value) => Math.max(0, value - 1))} disabled={step === 0 || sending}>Back</button><button type="button" className="btn btn-primary" disabled={!canAdvance || sending} onClick={advance}>{sending ? message : <>{step === 3 && <PaperPlaneTilt />} {step === 0 ? 'Add lines' : step === 1 ? 'Review' : step === 2 ? 'Posting options' : kind === 'quote' ? 'Post quote' : 'Post invoice'}</>}</button></div>}
     </div>
   );
 }
