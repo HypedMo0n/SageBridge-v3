@@ -1,5 +1,5 @@
 import { auth } from './firebase';
-import type { BootstrapState, Company, Customer, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus } from './types';
+import type { BootstrapState, Company, Connector, Customer, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sagebridge-api.cheikhmounirk.workers.dev';
 const COMPANY_STORAGE_KEY = 'sagebridge-company-id';
@@ -31,6 +31,7 @@ export class ApiError extends Error {
 type ErrorBody = { error?: string | { message?: string; code?: string }; message?: string; code?: string };
 type RawCompany = Record<string, unknown> & { id: string };
 type RawProvisioning = Record<string, unknown>;
+type RawConnector = Record<string, unknown> & { id: string };
 
 function stringValue(value: unknown, fallback = '') { return typeof value === 'string' ? value : fallback; }
 function numberValue(value: unknown, fallback = 0) { return typeof value === 'number' && Number.isFinite(value) ? value : fallback; }
@@ -47,6 +48,25 @@ function mapCompany(row: RawCompany): Company {
     provisioningState: (nullableString(row.provisioningState ?? row.provisioning_state) as ProvisioningStatus | null),
     provisioningProgress: typeof (row.provisioningProgress ?? row.provisioning_progress) === 'number' ? Number(row.provisioningProgress ?? row.provisioning_progress) : null,
     createdAt: stringValue(row.createdAt ?? row.created_at) || undefined,
+  };
+}
+
+function mapConnector(row: RawConnector, companyId: string): Connector {
+  // "revoked" (an explicit, permanent, admin-driven state) is distinct from
+  // liveness (online/offline) - a revoked connector is never "offline", it
+  // is "not paired" and must not be shown as if it might come back online.
+  const revoked = !!(row.revokedAt ?? row.revoked_at) || row.status === 'revoked';
+  return {
+    id: row.id,
+    name: stringValue(row.displayName ?? row.display_name, 'Sage 50 connector'),
+    machineName: nullableString(row.machineName ?? row.machine_name),
+    companyId,
+    status: revoked ? 'revoked' : row.online === true ? 'online' : 'offline',
+    lastSeenAt: nullableString(row.lastSeenAt ?? row.last_seen_at),
+    lastSyncAt: nullableString(row.lastSyncAt ?? row.last_sync_at),
+    pairedAt: nullableString(row.createdAt ?? row.created_at),
+    revokedAt: nullableString(row.revokedAt ?? row.revoked_at),
+    version: nullableString(row.version),
   };
 }
 
@@ -128,6 +148,11 @@ class SageBridgeAPI {
   async getProvisioning(companyId: string): Promise<ProvisioningState> {
     const response = await this.request<{ provisioning: RawProvisioning }>(`/api/companies/${encodeURIComponent(companyId)}/provisioning`);
     return mapProvisioning(response.provisioning);
+  }
+
+  async getConnectors(companyId: string): Promise<Connector[]> {
+    const response = await this.request<{ connectors: RawConnector[] }>(`/api/companies/${encodeURIComponent(companyId)}/connectors`);
+    return response.connectors.map((row) => mapConnector(row, companyId));
   }
 
   async revokeConnector(id: string): Promise<void> { await this.request(`/api/connectors/${encodeURIComponent(id)}/revoke`, { method: 'POST' }); }

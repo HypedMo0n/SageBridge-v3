@@ -98,9 +98,13 @@ export type ConnectorStatus = 'online' | 'offline' | 'revoked' | 'unknown';
 export interface Connector {
   id: string;
   name: string;
+  /** The paired machine's own reported name, e.g. "OFFICE-PC" - distinct from `name` (a display label). */
+  machineName: string | null;
   companyId: string;
   status: ConnectorStatus;
   lastSeenAt: string | null;
+  /** Last time this connector completed a sync - distinct from lastSeenAt (heartbeat liveness). */
+  lastSyncAt: string | null;
   pairedAt?: string | null;
   revokedAt?: string | null;
   version?: string | null;
