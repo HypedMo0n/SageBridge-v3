@@ -36,13 +36,13 @@ export function CustomerCard({ customer }: CustomerCardProps) {
         <div>
           <div
             className={`text-xl font-bold tabular-nums ${
-              customer.balance > 0 ? 'text-zinc-900 dark:text-zinc-100' : 'text-emerald-600 dark:text-emerald-400'
+              customer.balance != null && customer.balance > 0 ? 'text-zinc-900 dark:text-zinc-100' : 'text-emerald-600 dark:text-emerald-400'
             }`}
           >
             {formatMoney(customer.balance)}
           </div>
           <div className="text-xs text-zinc-500 dark:text-zinc-400">
-            {customer.balance > 0 ? 'Outstanding balance' : 'Paid in full'}
+            Current balance
           </div>
         </div>
         <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">

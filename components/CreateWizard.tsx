@@ -152,10 +152,11 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
 
   function addProduct(sku: string) {
     const product = products.find((item) => item.sku === sku);
-    if (!product) return;
+    if (!product || product.price == null) return;
+    const price = product.price;
     setCart((lines) => {
       const exists = lines.some((line) => line.sku === product.sku);
-      return exists ? lines.map((line) => line.sku === product.sku ? { ...line, qty: line.qty + 1 } : line) : [...lines, { sku: product.sku, name: product.name, price: product.price, qty: 1 }];
+      return exists ? lines.map((line) => line.sku === product.sku ? { ...line, qty: line.qty + 1 } : line) : [...lines, { sku: product.sku, name: product.name, price, qty: 1 }];
     });
   }
 

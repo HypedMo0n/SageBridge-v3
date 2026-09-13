@@ -384,14 +384,6 @@ a {
   background: var(--color-neutral-800);
   color: var(--color-neutral-200);
 }
-.tag.paid {
-  background: var(--color-accent-900);
-  color: var(--color-accent-300);
-}
-.tag.overdue {
-  background: var(--color-accent-800);
-  color: var(--color-accent-200);
-}
 .rule {
   height: 1px;
   margin: 14px 0;

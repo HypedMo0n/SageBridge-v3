@@ -7,14 +7,19 @@ export interface Customer {
   id: number;
   sageId: string;
   name: string;
+  contact: string | null;
   email: string | null;
   phone: string | null;
-  balance: number;
-  status: string;
-  address?: string | null;
+  alternatePhone: string | null;
+  fax: string | null;
+  address: string | null;
   city?: string | null;
   province?: string | null;
   postalCode?: string | null;
+  creditLimit: number | null;
+  balance: number | null;
+  homeCurrencyBalance: number | null;
+  status: string | null;
   lastSyncedAt: string;
 }
 
@@ -22,13 +27,17 @@ export interface Invoice {
   id: number;
   sageId: string;
   invoiceNumber: string;
+  customerSageId: string | null;
+  customerName: string | null;
   date: string;
-  dueDate: string | null;
-  total: number;
-  balance: number;
-  status: string;
-  customerSageId: string;
-  customerName: string;
+  reference: string | null;
+  preTaxTotal: number | null;
+  total: number | null;
+  balance: number | null;
+  homeCurrencyTotal: number | null;
+  homeCurrencyBalance: number | null;
+  transactionCurrencyTotal: number | null;
+  transactionCurrencyBalance: number | null;
 }
 
 export interface Product {
@@ -37,11 +46,13 @@ export interface Product {
   sku: string;
   name: string;
   description: string | null;
-  price: number;
+  unit: string | null;
+  price: number | null;
   stock: number | null;
   reorderLevel: number | null;
   category: string | null;
-  isService: boolean;
+  isService: boolean | null;
+  status: string | null;
   lastSyncedAt: string;
 }
 

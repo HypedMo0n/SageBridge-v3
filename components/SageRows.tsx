@@ -1,9 +1,42 @@
 'use client';
 
-import Link from 'next/link';import {CaretRight,Package,Wrench,Receipt} from '@phosphor-icons/react';import type{Customer,Invoice,Product}from '@/lib/api';import{formatMoney}from '@/lib/utils';
-export const initials=(s:string)=>s.split(/\s+/).slice(0,2).map(x=>x[0]).join('').toUpperCase();
-export function CustomerRow({c}:{c:Customer}){return <Link href={`/customers/${c.sageId}`} className="row"><span className="avatar">{initials(c.name)}</span><span className="row-main"><span className="row-title">{c.name}</span><span className="row-sub">{c.city||c.email||'Sage 50 customer'}</span></span><span style={{textAlign:'right'}}><span className="row-title money">{formatMoney(c.balance)}</span><span className="row-sub">{c.balance?'outstanding':'clear'}</span></span><CaretRight className="chev" size={13}/></Link>}
-export function InvoiceRow({i,card=false}:{i:Invoice;card?:boolean}){const overdue=i.balance>0&&i.dueDate&&new Date(i.dueDate)<new Date();const status=i.balance<=0?'Paid':overdue?'Overdue':i.status||'Open';const dateCaption=status==='Paid'?'paid':overdue?'past due':'due';return <Link href={`/invoices/${i.invoiceNumber}`} className={card?'card':'row'} style={card?{display:'block'}:undefined}><div style={{display:'flex',alignItems:'center',gap:8}}><Receipt className="subtle" size={card?0:18}/><span className="row-main"><span className="row-title" style={{fontWeight:500}}>{i.invoiceNumber}</span><span className="row-sub">{i.customerName}</span></span><span className={`tag ${status==='Paid'?'paid':status==='Overdue'?'overdue':''}`}>{status}</span><CaretRight className="chev" size={13}/></div>{card&&<><div className="rule"/><div style={{display:'flex',justifyContent:'space-between'}}><span><b className="money" style={{fontSize:18,fontWeight:400}}>{formatMoney(i.total)}</b><span className="row-sub">Total</span></span><span style={{textAlign:'right'}}><b className="money" style={{fontSize:14,fontWeight:400,color:overdue?'var(--color-accent-400)':'var(--color-neutral-500)'}}>{i.dueDate?new Intl.DateTimeFormat('en-CA',{month:'short',day:'numeric'}).format(new Date(i.dueDate)):'—'}</b><span className="row-sub">{dateCaption}</span></span></div></>}</Link>}
-export function ProductRow({p}:{p:Product}){const Icon=p.isService?Wrench:Package,low=p.stock!=null&&p.reorderLevel!=null&&p.stock<=p.reorderLevel;return <div className="row"><span className={`icon-box ${p.isService?'accent-box':''}`}><Icon size={15}/></span><span className="row-main"><span className="row-title">{p.name}</span><span className="row-sub">{p.sku} · {p.isService?'Service':p.stock==null?'Stock unavailable':low?`${p.stock} left · reorder`:`${p.stock} in stock`}</span></span><span className="row-title money">{formatMoney(p.price)}</span></div>}
-export function LoadingRows(){return <div className="stack">{[1,2,3,4].map(x=><div className="skeleton" key={x}/>)}</div>}
-export function ErrorState({text}:{text:string}){return <div className="error">{text}</div>}
+import Link from 'next/link';
+import { CaretRight, Package, Wrench, Receipt } from '@phosphor-icons/react';
+import type { Customer, Invoice, Product } from '@/lib/api';
+import { formatDate, formatMoney } from '@/lib/utils';
+
+export const initials = (value: string) => value.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+const money = (value: number | null | undefined) => value == null ? '—' : formatMoney(value);
+
+export function CustomerRow({ c }: { c: Customer }) {
+  return <Link href={`/customers/${c.sageId}`} className="row">
+    <span className="avatar">{initials(c.name)}</span>
+    <span className="row-main"><span className="row-title">{c.name}</span><span className="row-sub">{c.city || c.email || 'Sage 50 customer'}</span></span>
+    <span style={{ textAlign: 'right' }}><span className="row-title money">{money(c.balance)}</span><span className="row-sub">Current balance</span></span>
+    <CaretRight className="chev" size={13} />
+  </Link>;
+}
+
+export function InvoiceRow({ i, card = false }: { i: Invoice; card?: boolean }) {
+  return <Link href={`/invoices/${i.invoiceNumber}`} className={card ? 'card' : 'row'} style={card ? { display: 'block' } : undefined}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <Receipt className="subtle" size={card ? 0 : 18} />
+      <span className="row-main"><span className="row-title" style={{ fontWeight: 500 }}>{i.invoiceNumber}</span><span className="row-sub">{i.customerName || i.customerSageId || 'Sage 50 customer'}</span></span>
+      <span className="row-sub">{formatDate(i.date)}</span>
+      <CaretRight className="chev" size={13} />
+    </div>
+    {card && <><div className="rule" /><div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <span><b className="money" style={{ fontSize: 18, fontWeight: 400 }}>{money(i.total)}</b><span className="row-sub">Original total</span></span>
+      <span style={{ textAlign: 'right' }}><b className="money" style={{ fontSize: 14, fontWeight: 400 }}>{money(i.balance)}</b><span className="row-sub">Current balance</span></span>
+    </div></>}
+  </Link>;
+}
+
+export function ProductRow({ p }: { p: Product }) {
+  const Icon = p.isService ? Wrench : Package;
+  const low = p.stock != null && p.reorderLevel != null && p.stock <= p.reorderLevel;
+  return <div className="row"><span className={`icon-box ${p.isService ? 'accent-box' : ''}`}><Icon size={15} /></span><span className="row-main"><span className="row-title">{p.name}</span><span className="row-sub">{p.sku} · {p.isService ? 'Service' : p.stock == null ? 'Stock unavailable' : low ? `${p.stock} left · reorder` : `${p.stock} in stock`}</span></span><span className="row-title money">{money(p.price)}</span></div>;
+}
+
+export function LoadingRows() { return <div className="stack">{[1, 2, 3, 4].map((x) => <div className="skeleton" key={x} />)}</div>; }
+export function ErrorState({ text }: { text: string }) { return <div className="error">{text}</div>; }
