@@ -1,8 +1,17 @@
+import { companyRequestHeaders } from './company-selection';
+
 // API Configuration
 const API_URL = 'https://sagebridge-api.cheikhmounirk.workers.dev';
 const API_KEY = 'universl_main_sage50bridge2026'; // Existing connector credential; preserve until server-side auth migration.
 
 // Types
+export interface Company {
+  id: string;
+  name: string;
+  connectorStatus: string | null;
+  lastSyncAt: string | null;
+}
+
 export interface Customer {
   id: number;
   sageId: string;
@@ -63,12 +72,16 @@ export interface ApiResponse<T> {
 
 // API Client
 class SageBridgeAPI {
-  private async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  private async request<T>(endpoint: string, options?: RequestInit, includeCompany = true): Promise<T> {
+    const selectedCompanyHeaders = typeof window === 'undefined' || !includeCompany
+          ? {}
+          : companyRequestHeaders(window.localStorage);
     const response = await fetch(`${API_URL}${endpoint}`, {
       ...options,
       headers: {
         'X-API-Key': API_KEY,
         'Content-Type': 'application/json',
+        ...selectedCompanyHeaders,
         ...options?.headers,
       },
     });
@@ -79,6 +92,11 @@ class SageBridgeAPI {
     }
 
     return response.json();
+  }
+
+  async getCompanies(): Promise<Company[]> {
+    const response = await this.request<{ companies: Company[] }>('/api/companies', undefined, false);
+    return response.companies;
   }
 
   // Customers
