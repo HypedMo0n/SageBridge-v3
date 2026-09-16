@@ -138,9 +138,16 @@ class SageBridgeAPI {
     }) };
   }
 
-  async createPairingCode(companyId: string): Promise<PairingCode> { return this.request(`/api/companies/${encodeURIComponent(companyId)}/pairing-codes`, { method: 'POST' }); }
-  async getProvisioning(companyId: string): Promise<ProvisioningState> { const response = await this.request<{ provisioning: ProvisioningState }>(`/api/companies/${encodeURIComponent(companyId)}/provisioning`); return response.provisioning; }
-  async startProvisioning(companyId: string): Promise<ProvisioningState> { const response = await this.request<{ provisioning: ProvisioningState }>(`/api/companies/${encodeURIComponent(companyId)}/provisioning`, { method: 'POST' }); return response.provisioning; }
+  // These three routes resolve the company from the URL path alone
+  // (see sagebridge-api src/router.ts: /api/companies/{id}/...) and never
+  // read X-Company-Id, so they must NOT go through the companyScoped guard
+  // - that guard requires a company already selected in localStorage, which
+  // has nothing to do with the companyId already passed in explicitly here
+  // and previously made pairing/provisioning fail before a company had ever
+  // been selected in this browser.
+  async createPairingCode(companyId: string): Promise<PairingCode> { return this.request(`/api/companies/${encodeURIComponent(companyId)}/pairing-codes`, { method: 'POST' }, false, false); }
+  async getProvisioning(companyId: string): Promise<ProvisioningState> { const response = await this.request<{ provisioning: ProvisioningState }>(`/api/companies/${encodeURIComponent(companyId)}/provisioning`, {}, false, false); return response.provisioning; }
+  async startProvisioning(companyId: string): Promise<ProvisioningState> { const response = await this.request<{ provisioning: ProvisioningState }>(`/api/companies/${encodeURIComponent(companyId)}/provisioning`, { method: 'POST' }, false, false); return response.provisioning; }
 
   async deleteAccount(): Promise<{ success: boolean; message: string }> {
     return this.request<{ success: boolean; message: string }>('/api/account', { method: 'DELETE' }, false, false);

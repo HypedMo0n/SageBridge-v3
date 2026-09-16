@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, getSelectedCompanyId, setSelectedCompanyId, type BootstrapState, type CompanyDetail } from '@/lib/api';
 import { auth } from '@/lib/firebase';
+import { isSetupComplete } from '@/lib/onboarding-stage';
 
 interface AuthContextValue {
   user: User | null;
@@ -70,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const company = workspace?.companies.find((item) => item.id === companyId) || null;
   const loading = authLoading;
-  const setupComplete = !!workspace?.companies.some((item) => item.connectorStatus === 'connected' || item.provisioningState === 'ready');
+  const setupComplete = isSetupComplete(workspace?.companies || []);
 
   const selectCompany = useCallback((nextCompanyId: string) => {
     if (!workspace?.companies.some((item) => item.id === nextCompanyId)) return;

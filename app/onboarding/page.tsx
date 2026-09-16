@@ -1,228 +1,177 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
-import { api, type CompanyDetail, type PairingCode, type ProvisioningState } from '@/lib/api';
+import { api, type PairingCode, type ProvisioningState } from '@/lib/api';
+import { deriveStage, importItemStatus, IMPORT_ITEMS, readLocalStep, writeLocalStep, type LocalStep } from '@/lib/onboarding-stage';
 
 const CONNECTOR_DOWNLOAD_URL = 'https://github.com/HypedMo0n/SageBridge-Connector/releases/download/beta-v1.1.0/sagebridge-connector-beta-v1.1.0.zip';
 
-type Step = 'download' | 'install' | 'pair' | 'detect-sage' | 'confirm-company' | 'importing' | 'ready';
+function errorText(reason: unknown) {
+  return reason instanceof Error ? reason.message : 'Something went wrong. Please try again.';
+}
 
 export default function OnboardingPage() {
-  const { workspace, company, refreshWorkspace } = useAuth();
-  const [step, setStep] = useState<Step>('download');
+  const { company, refreshWorkspace } = useAuth();
+  const [localStep, setLocalStep] = useState<LocalStep>(() => readLocalStep(typeof window === 'undefined' ? undefined : window.localStorage));
   const [pairing, setPairing] = useState<PairingCode | null>(null);
   const [provisioning, setProvisioning] = useState<ProvisioningState | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [detectedCompany, setDetectedCompany] = useState<CompanyDetail | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadProvisioning = useCallback(async (companyId: string) => {
-    try {
-      const next = await api.getProvisioning(companyId);
-      setProvisioning(next);
-      return next;
-    } catch (reason) {
-      console.error('Could not load provisioning:', reason);
-      return null;
-    }
+    try { setProvisioning(await api.getProvisioning(companyId)); }
+    catch (reason) { console.error('Could not load provisioning:', reason); }
   }, []);
+
+  // Resume correctly on mount/refresh: pull the latest backend truth once,
+  // rather than trusting whatever was in memory before the reload.
+  useEffect(() => {
+    if (!company) return;
+    let active = true;
+    api.getProvisioning(company.id).then((next) => { if (active) setProvisioning(next); }).catch((reason) => console.error('Could not load provisioning:', reason));
+    return () => { active = false; };
+  }, [company]);
+
+  const stage = useMemo(() => deriveStage(company, provisioning, localStep), [company, provisioning, localStep]);
+
+  const advanceLocalStep = (next: LocalStep) => { writeLocalStep(typeof window === 'undefined' ? undefined : window.localStorage, next); setLocalStep(next); };
 
   const generateCode = useCallback(async (companyId: string) => {
-    setBusy(true);
-    setError('');
-    try {
-      const next = await api.createPairingCode(companyId);
-      setPairing(next);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not generate pairing code');
-    } finally {
-      setBusy(false);
-    }
+    setBusy(true); setError('');
+    try { setPairing(await api.createPairingCode(companyId)); }
+    catch (reason) { setError(errorText(reason)); }
+    finally { setBusy(false); }
   }, []);
 
-  const startProvisioning = useCallback(async (companyId: string) => {
-    setBusy(true);
-    setError('');
-    try {
-      const next = await api.startProvisioning(companyId);
-      setProvisioning(next);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not start provisioning');
-    } finally {
-      setBusy(false);
-    }
+  const beginProvisioning = useCallback(async (companyId: string) => {
+    setBusy(true); setError('');
+    try { setProvisioning(await api.startProvisioning(companyId)); }
+    catch (reason) { setError(errorText(reason)); }
+    finally { setBusy(false); }
   }, []);
 
-  // Determine step from state
+  // A single poll loop, only while there is something backend-side worth
+  // watching for (pairing/connect/importing/failed). Never runs during the
+  // purely local download/install steps or once ready. One interval at a
+  // time; always cleared on unmount or when polling is no longer needed.
+  const shouldPoll = stage === 'pair' || stage === 'connect' || stage === 'importing' || stage === 'failed';
   useEffect(() => {
-    if (!company) {
-      if (pairing) setStep('pair');
-      else setStep('download');
-      return;
-    }
+    if (!shouldPoll || !company) return;
+    const companyId = company.id;
+    const id = setInterval(() => {
+      Promise.all([refreshWorkspace(), loadProvisioning(companyId)]).catch((reason) => console.error('Onboarding poll failed:', reason));
+    }, 4000);
+    return () => clearInterval(id);
+  }, [shouldPoll, company, refreshWorkspace, loadProvisioning]);
 
-    if (company.online && company.connectorStatus === 'connected') {
-      if (provisioning?.state === 'ready') setStep('ready');
-      else if (provisioning?.state === 'failed') setStep('importing');
-      else if (provisioning) setStep('importing');
-      else setStep('detect-sage');
-    } else if (company.connectorStatus === 'connected') {
-      setStep('detect-sage');
-    } else {
-      setStep('pair');
-    }
-  }, [company, provisioning, pairing]);
-
-  // Poll for provisioning updates
-  useEffect(() => {
-    if (!company || step === 'download' || step === 'install' || step === 'pair') return;
-    const id = setInterval(() => { loadProvisioning(company.id).catch(() => {}); }, 5000);
-    timerRef.current = id;
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [company, step, loadProvisioning]);
-
-  // Check if Sage is detected (connector heartbeat received)
-  useEffect(() => {
-    if (step !== 'detect-sage' || !company) return;
-    if (company.sageCompanyName && company.sageCompanyName !== 'Sage company') {
-      setDetectedCompany(company);
-      setStep('confirm-company');
-    }
-  }, [step, company]);
-
-  const sageCompanyName = detectedCompany?.sageCompanyName || company?.sageCompanyName;
-
-  const provisioningLabel = (state: string) => {
-    const labels: Record<string, string> = {
-      awaiting_connector: 'Waiting for connector',
-      connector_connected: 'Connector connected',
-      checking_sage: 'Checking Sage 50 connection',
-      company_selected: 'Company selected',
-      provisioning: 'Setting up workspace',
-      syncing_customers: 'Importing customers',
-      syncing_invoices: 'Importing invoices',
-      syncing_products: 'Importing products',
-      syncing_quotes: 'Importing quotes',
-      finalizing: 'Finalizing setup',
-      ready: 'Workspace ready',
-      failed: 'Setup failed',
-    };
-    return labels[state] || state;
-  };
-
-  const importStep = (state: string) => {
-    const order = ['awaiting_connector', 'connector_connected', 'checking_sage', 'company_selected', 'provisioning', 'syncing_customers', 'syncing_invoices', 'syncing_products', 'syncing_quotes', 'finalizing', 'ready'];
-    return order.indexOf(state);
-  };
-
-  const currentImportStep = provisioning ? importStep(provisioning.state) : 0;
-  const isComplete = (idx: number) => provisioning?.state === 'ready' || (currentImportStep > idx && provisioning?.state !== 'failed');
+  if (!company) {
+    return <main className="setup"><div className="setup-card"><p className="notice">Loading your workspace…</p></div></main>;
+  }
 
   return (
     <main className="setup">
       <div className="setup-card">
         <h1 className="kicker">Welcome to SageBridge</h1>
 
-        {/* STEP 1: Download Connector */}
-        {step === 'download' && (
+        {stage === 'download' && (
           <section className="card onboarding-step-card">
             <h2 className="step-heading">Connect Sage 50</h2>
             <p className="notice">SageBridge securely connects to Sage 50 through a small Windows app installed on the computer where Sage 50 is used.</p>
-            <a className="btn primary btn-block" href={CONNECTOR_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
-              Download SageBridge Connector
-            </a>
-            <p className="notice" style={{ marginTop: 8, fontSize: 11, color: 'var(--color-neutral-500)' }}>
-              Windows · Sage 50 Canada
-            </p>
+            <a className="btn btn-primary btn-block" href={CONNECTOR_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download SageBridge Connector</a>
+            <p className="notice" style={{ marginTop: 8, fontSize: 11, color: 'var(--color-neutral-500)' }}>Windows · Sage 50 Canada</p>
+            <button className="btn btn-block" style={{ marginTop: 12 }} onClick={() => advanceLocalStep('install')}>I&apos;ve downloaded it</button>
           </section>
         )}
 
-        {/* STEP 2: Install */}
-        {step !== 'download' && step !== 'ready' && (
+        {stage === 'install' && (
           <section className="card onboarding-step-card">
             <h2 className="step-heading">Install SageBridge Connector</h2>
-            <p className="notice">Install and open SageBridge Connector on the Windows computer where Sage 50 is installed.</p>
+            <p className="notice">Run the installer on the Windows computer where Sage 50 is installed. It opens its own setup window - no command line is needed.</p>
+            <button className="btn btn-block" style={{ marginBottom: 8 }} onClick={() => advanceLocalStep('download')}>← Back to download</button>
+            <button
+              className="btn btn-primary btn-block"
+              disabled={busy}
+              onClick={() => { advanceLocalStep('pair'); if (company) generateCode(company.id); }}
+            >
+              {busy ? 'Requesting code…' : "I've installed the connector"}
+            </button>
           </section>
         )}
 
-        {/* STEP 3: Pair */}
-        {(step === 'pair' || step === 'detect-sage' || step === 'confirm-company' || step === 'importing') && (
+        {stage === 'pair' && (
           <section className="card onboarding-step-card">
             <h2 className="step-heading">Pair your computer</h2>
-            <p className="notice">Generate a one-time code, then enter it in SageBridge Connector on the office computer.</p>
+            <p className="notice">SageBridge Connector will ask for a one-time code the first time it runs. Generate one below and enter it there.</p>
             {pairing && (
               <div className="pair-code-display">
                 <strong>{pairing.code}</strong>
                 <span>Expires {new Date(pairing.expiresAt).toLocaleTimeString()}</span>
               </div>
             )}
-            <button className="btn btn-primary btn-block" onClick={() => company && generateCode(company.id)} disabled={busy || !company}>
-              {busy ? 'Requesting code…' : pairing ? 'Generate new code' : 'Generate pairing code'}
+            <button className="btn btn-primary btn-block" onClick={() => company && generateCode(company.id)} disabled={busy}>
+              {busy ? 'Requesting code…' : pairing ? 'Generate a new code' : 'Generate pairing code'}
             </button>
           </section>
         )}
 
-        {/* STEP 4: Detect Sage */}
-        {step === 'detect-sage' && (
+        {stage === 'connect' && (
           <section className="card onboarding-step-card">
             <h2 className="step-heading">Connect to Sage 50</h2>
             <div className="status-line"><span className="status-check">✓</span> Computer connected</div>
-            <div className="status-line loading"><span className="status-spinner" /> Checking Sage 50…</div>
-            <p className="notice">Your computer is connected. Waiting for Sage 50…</p>
-          </section>
-        )}
-
-        {/* STEP 5: Confirm Company */}
-        {step === 'confirm-company' && sageCompanyName && (
-          <section className="card onboarding-step-card">
-            <h2 className="step-heading">Connect to Sage 50</h2>
-            <div className="status-line"><span className="status-check">✓</span> Computer connected</div>
-            <div className="status-line"><span className="status-check">✓</span> Sage 50 detected</div>
-            <div className="company-reveal">
-              <p className="notice">Found your Sage company:</p>
-              <strong className="company-name-reveal">{sageCompanyName}</strong>
-            </div>
-            <button className="btn btn-primary btn-block" onClick={() => company && startProvisioning(company.id)} disabled={busy}>
-              Connect this company
+            <p className="notice">Your SageBridge Connector is online. Start setup to detect your Sage 50 company and begin importing your data.</p>
+            <button className="btn btn-primary btn-block" onClick={() => company && beginProvisioning(company.id)} disabled={busy}>
+              {busy ? 'Starting…' : 'Start setup'}
             </button>
           </section>
         )}
 
-        {/* STEP 6: Importing */}
-        {step === 'importing' && provisioning && (
+        {stage === 'importing' && provisioning && (
           <section className="card onboarding-step-card">
             <h2 className="step-heading">Importing your Sage data</h2>
+            <div className="status-line"><span className="status-check">✓</span> Computer connected</div>
+            <div className="status-line"><span className="status-check">✓</span> Sage 50 detected</div>
             <div className="import-list">
-              {(['syncing_customers', 'syncing_invoices', 'syncing_products', 'syncing_quotes'] as const).map((state, idx) => (
-                <div key={state} className={`import-item ${isComplete(idx) ? 'complete' : currentImportStep === idx ? 'active' : 'pending'}`}>
-                  <span className="import-icon">{isComplete(idx) ? '✓' : currentImportStep === idx ? '○' : '·'}</span>
-                  <span className="import-label">
-                    {idx === 0 ? 'Customers' : idx === 1 ? 'Invoices' : idx === 2 ? 'Products & services' : 'Quotes'}
-                  </span>
-                </div>
-              ))}
+              {IMPORT_ITEMS.map(({ state, label }) => {
+                const status = importItemStatus(state, provisioning.state);
+                return (
+                  <div key={state} className={`import-item ${status}`}>
+                    <span className="import-icon">{status === 'complete' ? '✓' : status === 'active' ? '○' : '·'}</span>
+                    <span className="import-label">{label}</span>
+                  </div>
+                );
+              })}
             </div>
-            {provisioning.state === 'failed' && (
-              <div className="error-box">We connected successfully, but some Sage data could not be imported.</div>
-            )}
+            <p className="notice">{provisioning.progress}% complete</p>
           </section>
         )}
 
-        {/* STEP 7: Ready */}
-        {step === 'ready' && (
+        {stage === 'failed' && provisioning && (
+          <section className="card onboarding-step-card">
+            <h2 className="step-heading">Setup couldn&apos;t finish</h2>
+            <div className="error-box" role="alert">
+              {provisioning.errorMessage || 'Something interrupted the connection to Sage 50.'}
+              {provisioning.errorCode ? ` (${provisioning.errorCode})` : ''}
+            </div>
+            <p className="notice">Make sure the SageBridge Connector is running and Sage 50 is open on the office computer, then try again.</p>
+            <button className="btn btn-primary btn-block" onClick={() => company && beginProvisioning(company.id)} disabled={busy}>
+              {busy ? 'Retrying…' : 'Retry setup'}
+            </button>
+          </section>
+        )}
+
+        {stage === 'ready' && (
           <section className="card onboarding-step-card">
             <h2 className="step-heading">SageBridge is ready</h2>
-            <p className="notice">{sageCompanyName || company?.name || 'Your company'} is connected and synced.</p>
+            <p className="notice">{company.name} is connected and synced.</p>
             <Link className="btn btn-primary btn-block" href="/dashboard">Open SageBridge</Link>
           </section>
         )}
 
         {error && <p className="notice error">{error}</p>}
 
-        {step !== 'ready' && (
+        {stage !== 'ready' && stage !== 'download' && (
           <p className="notice" style={{ marginTop: 12, fontSize: 11 }}>
             Need help? <Link href="/pair">View pairing instructions</Link>
           </p>

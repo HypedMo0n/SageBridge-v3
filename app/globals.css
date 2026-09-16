@@ -398,6 +398,16 @@ a {
   width: 20px;
   text-align: center;
 }
+.error-box {
+  margin: 12px 0;
+  padding: 11px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  border: 1px solid color-mix(in srgb, #dc2626 40%, var(--color-divider));
+  background: color-mix(in srgb, #dc2626 10%, transparent);
+  color: #dc2626;
+}
 
 .sync-dot {
   width: 6px;
