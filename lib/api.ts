@@ -3,14 +3,12 @@ import { COMPANY_STORAGE_KEY } from './company-selection';
 
 // API Configuration
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sagebridge-api.cheikhmounirk.workers.dev';
-let selectedCompanyId = '';
 
 function readCompanyId() {
   if (typeof window === 'undefined') return '';
   return window.localStorage.getItem(COMPANY_STORAGE_KEY) || '';
 }
 export function setSelectedCompanyId(companyId: string) {
-  selectedCompanyId = companyId;
   if (typeof window !== 'undefined') {
     if (companyId) window.localStorage.setItem(COMPANY_STORAGE_KEY, companyId);
     else window.localStorage.removeItem(COMPANY_STORAGE_KEY);

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
-import { COMPANY_STORAGE_KEY } from '@/lib/company-selection';
+import { useAuth } from '@/components/AuthProvider';
 
 const groups = [
   ['Sync', [['Sync frequency', 'Every 15 min'], ['Wi-Fi only', 'Off']]],
@@ -12,6 +12,7 @@ const groups = [
 ] as const;
 
 export default function Page() {
+  const { logout } = useAuth();
   const [message, setMessage] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -26,9 +27,14 @@ export default function Page() {
     try {
       const result = await api.deleteAccount();
       if (result.success) {
-        // Clear stored company selection and redirect to home
-        window.localStorage.removeItem(COMPANY_STORAGE_KEY);
-        window.location.href = '/';
+        // The account no longer exists server-side, so this must fully
+        // sign out of Firebase (not just clear the company selection) -
+        // otherwise the stale, still-"authenticated" session would land on
+        // /onboarding and hang forever re-bootstrapping a deleted account.
+        // logout() clears the selected company, signs out, and navigates
+        // to /login via the router.
+        await logout();
+        return;
       } else {
         setMessage(result.message || 'Failed to delete account');
         setConfirming(false);
