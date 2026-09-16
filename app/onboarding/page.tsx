@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { api, type Company } from '@/lib/api';
+import { api, type CompanyDetail } from '@/lib/api';
 import {
   COMPANY_STORAGE_KEY,
   resolveSelectedCompany,
@@ -14,7 +14,7 @@ const CONNECTOR_DOWNLOAD_URL = 'https://github.com/HypedMo0n/SageBridge-Connecto
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companies, setCompanies] = useState<CompanyDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState('');
@@ -27,11 +27,11 @@ export default function OnboardingPage() {
       return;
     }
 
-    api.getCompanies()
-      .then(list => {
-        setCompanies(list);
+    api.bootstrap()
+      .then(state => {
+        setCompanies(state.companies);
         const stored = window.localStorage.getItem(COMPANY_STORAGE_KEY);
-        setSelected(resolveSelectedCompany(list, stored) ?? '');
+        setSelected(resolveSelectedCompany(state.companies, stored) ?? '');
         setLoading(false);
       })
       .catch(err => {

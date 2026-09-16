@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ArrowLeft, House, MagnifyingGlass, Files, DotsThreeOutline, Moon, Sun } from '@phosphor-icons/react';
-import { api, type Company } from '../lib/api';
+import { api, type CompanyDetail } from '../lib/api';
 import { COMPANY_STORAGE_KEY, resolveSelectedCompany, saveSelectedCompany } from '../lib/company-selection';
 
 const META: Record<string, [string, string]> = {
@@ -24,17 +24,17 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const [day, setDay] = useState(() => typeof window !== 'undefined' && localStorage.getItem('sb-theme') === 'day');
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companies, setCompanies] = useState<CompanyDetail[]>([]);
   const [companyId, setCompanyId] = useState('');
 
   useEffect(() => {
     let cancelled = false;
-    api.getCompanies()
-      .then(authorizedCompanies => {
+    api.bootstrap()
+      .then(state => {
         if (cancelled) return;
-        setCompanies(authorizedCompanies);
+        setCompanies(state.companies);
         const selected = resolveSelectedCompany(
-          authorizedCompanies,
+          state.companies,
           window.localStorage.getItem(COMPANY_STORAGE_KEY)
         );
         if (selected) {

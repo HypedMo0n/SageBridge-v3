@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { api, type Company } from '@/lib/api';
+import { api, type CompanyDetail } from '@/lib/api';
 import {
   COMPANY_STORAGE_KEY,
   resolveSelectedCompany,
@@ -12,17 +12,17 @@ import {
 
 export default function SetupPage() {
   const router = useRouter();
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companies, setCompanies] = useState<CompanyDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState('');
 
   useEffect(() => {
-    api.getCompanies()
-      .then(list => {
-        setCompanies(list);
+    api.bootstrap()
+      .then(state => {
+        setCompanies(state.companies);
         const stored = window.localStorage.getItem(COMPANY_STORAGE_KEY);
-        const initial = resolveSelectedCompany(list, stored);
+        const initial = resolveSelectedCompany(state.companies, stored);
         setSelected(initial ?? '');
         setLoading(false);
       })

@@ -1,8 +1,12 @@
+import type { CompanyDetail } from './api';
+
 export const COMPANY_STORAGE_KEY = 'sagebridge.selectedCompanyId';
 
 export interface SelectableCompany {
   id: string;
   name: string;
+  connectorStatus?: string | null;
+  lastSyncAt?: string | null;
 }
 
 export interface StorageLike {
@@ -11,7 +15,7 @@ export interface StorageLike {
 }
 
 export function resolveSelectedCompany(
-  companies: SelectableCompany[],
+  companies: CompanyDetail[] | SelectableCompany[],
   storedCompanyId: string | null
 ): string | null {
   if (storedCompanyId && companies.some(company => company.id === storedCompanyId)) {
