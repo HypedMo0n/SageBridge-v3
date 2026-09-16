@@ -184,6 +184,136 @@ a {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
+
+/* Setup page */
+.setup {
+  max-width: 430px;
+  margin: auto;
+  padding: 48px 16px 100px;
+}
+.setup-card {
+  background: var(--color-card);
+  border: 1px solid var(--color-divider);
+  border-radius: 16px;
+  padding: 24px;
+}
+.setup-card h1 {
+  font-size: 20px;
+  font-weight: 500;
+  margin: 0 0 8px;
+}
+.setup-card .notice {
+  font-size: 13px;
+  color: var(--color-neutral-500);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+.setup-card .notice.error {
+  color: #dc2626;
+}
+.company-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+.company-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid var(--color-divider);
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: var(--color-text);
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+.company-option:hover {
+  border-color: var(--color-accent);
+}
+.company-option.selected {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+.company-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+.company-meta {
+  font-size: 11px;
+  color: var(--color-neutral-500);
+}
+.setup-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.setup-actions .btn {
+  flex: 1;
+  text-align: center;
+}
+
+/* Danger zone */
+.danger-zone {
+  border-color: color-mix(in srgb, #dc2626 30%, var(--color-divider));
+}
+.danger-zone .kicker {
+  color: #dc2626;
+}
+.btn.danger {
+  background: #dc2626;
+  color: #fff;
+  border-color: #dc2626;
+}
+.btn.danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+.btn.danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Onboarding */
+.onboarding-steps {
+  margin: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.onboarding-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.step-title {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 0 2px;
+}
+.step-desc {
+  font-size: 12px;
+  color: var(--color-neutral-500);
+  margin: 0;
+  line-height: 1.4;
+}
+
 .sync-dot {
   width: 6px;
   height: 6px;

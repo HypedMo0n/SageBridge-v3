@@ -99,6 +99,10 @@ class SageBridgeAPI {
     return response.companies;
   }
 
+  async deleteAccount(): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>('/api/account', { method: 'DELETE' }, false);
+  }
+
   // Customers
   async getCustomers(): Promise<Customer[]> {
     const response = await this.request<{ customers: Customer[] }>('/api/customers');

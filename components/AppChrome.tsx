@@ -126,7 +126,7 @@ function BottomNav({ path }: { path: string }) {
         {tabs.map(([href, label, Icon]) => {
           const active = href === '/invoices'
             ? path.startsWith('/invoices') || path.startsWith('/quotes')
-            : path.startsWith(href) || (href === '/more' && ['/customers', '/products', '/reports', '/sync', '/settings', '/pair'].some(item => path.startsWith(item)));
+            : path.startsWith(href) || (href === '/more' && ['/customers', '/products', '/reports', '/sync', '/settings', '/pair', '/setup'].some(item => path.startsWith(item)));
           return (
             <Link href={href} className={`tab ${active ? 'active' : ''}`} key={href}>
               <Icon size={21} weight={active ? 'fill' : 'regular'} />
@@ -138,3 +138,4 @@ function BottomNav({ path }: { path: string }) {
     </nav>
   );
 }
+
