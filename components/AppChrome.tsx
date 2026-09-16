@@ -8,14 +8,14 @@ import { api, type Company } from '../lib/api';
 import { COMPANY_STORAGE_KEY, resolveSelectedCompany, saveSelectedCompany } from '../lib/company-selection';
 
 const META: Record<string, [string, string]> = {
-  '/dashboard': ['Universal Construction', 'Sage 50 · desktop connector'],
+  '/dashboard': ['SageBridge', 'Sage 50 · desktop connector'],
   '/search': ['Search', 'Customers, invoices, products'],
   '/invoices': ['Work', 'Invoices and quotes'],
   '/customers': ['Customers', 'From the last Sage 50 sync'],
   '/products': ['Products & services', 'From Sage 50'],
   '/reports': ['Reports', 'Calculated from synced invoices'],
   '/sync': ['Sync', 'Desktop connector status'],
-  '/more': ['More', 'Universal Construction'],
+  '/more': ['More', 'SageBridge'],
   '/settings': ['Settings', ''],
   '/pair': ['Pair with Sage 50', 'Desktop connector']
 };

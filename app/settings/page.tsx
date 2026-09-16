@@ -7,7 +7,7 @@ import { COMPANY_STORAGE_KEY } from '@/lib/company-selection';
 
 const groups = [
   ['Sync', [['Sync frequency', 'Every 15 min'], ['Wi-Fi only', 'Off']]],
-  ['Documents', [['Company & logo', 'Universal Construction'], ['Tax rates', 'HST 13%']]],
+  ['Documents', [['Company & logo', '—'], ['Tax rates', '—']]],
   ['Account', [['Users & permissions', 'Managed on desktop'], ['This device', 'Current browser']]],
 ] as const;
 
