@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { api, ApiError, type Connector } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/utils';
+import { HelpLink } from '@/components/help/HelpLink';
 
 const groups = [
   ['Sync', [['Sync frequency', 'Managed by connector'], ['Notifications', 'Workspace settings']]],
@@ -97,6 +98,7 @@ function SageConnectionSection({ companyId, companyName }: { companyId: string |
               <span className="row-main row-sub" style={{ marginLeft: 8 }}>Not connected</span>
             </div>
             <Link href="/pair" className="btn btn-block" style={{ marginTop: 10 }}>Pair a computer</Link>
+            <div style={{ marginTop: 10 }}><HelpLink slug="connect-sage-50" /></div>
           </>
         ) : (
           active.map((connector) => (
@@ -113,6 +115,7 @@ function SageConnectionSection({ companyId, companyName }: { companyId: string |
                     ? `Last seen ${formatRelativeTime(new Date(connector.lastSeenAt))}`
                     : 'Never synced yet'}
               </div>
+              {connector.status !== 'online' && <div style={{ marginTop: 6 }}><HelpLink slug="connector-offline" /></div>}
 
               {confirmingId === connector.id ? (
                 <div className="notice-box" style={{ marginTop: 12 }}>

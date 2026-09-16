@@ -133,6 +133,15 @@ export interface MeState {
   organizations: Organization[];
 }
 
+/** GET /health - unauthenticated, non-secret deployment identity. See sagebridge-api src/handlers/health.ts. */
+export interface HealthState {
+  status: string;
+  release?: string;
+  buildSha?: string;
+  apiContractVersion?: string;
+  environment?: string;
+}
+
 export interface JobStatus {
   jobId: string;
   status: 'pending' | 'claimed' | 'running' | 'succeeded' | 'failed';

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api, type Customer, type Product } from '@/lib/api';
 import { formatMoney } from '@/lib/utils';
 import { LoadingRows, initials } from './SageRows';
+import { HelpLink } from './help/HelpLink';
 import { CaretDown, CheckCircle, MagnifyingGlass, Minus, PaperPlaneTilt, Plus, X } from '@phosphor-icons/react';
 
 type Line = { sku: string; name: string; price: number; qty: number };
@@ -216,7 +217,7 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
   return (
     <div className="wizard-shell">
       {step < 4 && <div className="progress" aria-label={`Step ${step + 1} of 4`}>{[0, 1, 2, 3].map((value) => <i className={value <= step ? 'on' : ''} key={value} />)}</div>}
-      {error && <div className="error section" role="alert">{error}</div>}
+      {error && <div className="error section" role="alert">{error}<div style={{ marginTop: 8 }}><HelpLink slug={kind === 'quote' ? 'quote-creation-failed' : 'invoice-creation-failed'} /></div></div>}
 
       {step === 0 && <div className="wizard-grid">
         <section className="wizard-panel">

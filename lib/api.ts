@@ -1,5 +1,5 @@
 import { auth } from './firebase';
-import type { BootstrapState, Capabilities, Company, Connector, Customer, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus } from './types';
+import type { BootstrapState, Capabilities, Company, Connector, Customer, HealthState, Invoice, JobStatus, MeState, PairingCode, Product, ProvisioningState, ProvisioningStatus } from './types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sagebridge-api.cheikhmounirk.workers.dev';
 const COMPANY_STORAGE_KEY = 'sagebridge-company-id';
@@ -220,10 +220,21 @@ class SageBridgeAPI {
     return this.request(`/api/invoices/${encodeURIComponent(id)}/email`, { method: 'POST', body: JSON.stringify(data) }, false, true);
   }
   async getCapabilities(): Promise<Capabilities> { return this.request<Capabilities>('/api/capabilities'); }
+
+  /**
+   * GET /health is deliberately unauthenticated and carries no secrets (see
+   * sagebridge-api's src/handlers/health.ts) - it's the one endpoint safe to
+   * call without a signed-in user, for Help Center diagnostics.
+   */
+  async health(): Promise<HealthState> {
+    const response = await fetch(`${API_URL}/health`);
+    if (!response.ok) throw new ApiError(`Request failed (${response.status})`, response.status);
+    return response.json() as Promise<HealthState>;
+  }
   async getCustomerInvoices(customerSageId: string): Promise<Invoice[]> { return (await this.getInvoices()).filter((item) => item.customerSageId === customerSageId); }
   async getProducts(): Promise<Product[]> { const response = await this.request<{ all?: Product[]; products?: Product[] }>('/api/products', {}, false, true); return response.all || response.products || []; }
   async getProduct(id: string): Promise<Product | null> { return (await this.getProducts()).find((item) => item.sku === id || item.id.toString() === id) || null; }
 }
 
 export const api = new SageBridgeAPI();
-export type { BootstrapState, Capabilities, Company, Connector, Customer, Invoice, PairingCode, Product, ProvisioningState } from './types';
+export type { BootstrapState, Capabilities, Company, Connector, Customer, HealthState, Invoice, PairingCode, Product, ProvisioningState } from './types';

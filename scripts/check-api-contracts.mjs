@@ -85,4 +85,10 @@ assert.ok(/try\s*\{\s*response\s*=\s*await fetch/.test(api), 'lib/api.ts request
 assert.ok(api.includes("'network/unreachable'"), "lib/api.ts is missing the 'network/unreachable' error code for fetch-level failures");
 assert.ok(api.includes("throw new ApiError('Could not reach SageBridge"), 'lib/api.ts does not normalize a raw fetch() network failure into an actionable ApiError');
 
+// Help Center diagnostics reads GET /health, which sagebridge-api documents
+// as deliberately unauthenticated and secret-free - it must stay that way
+// (no Authorization header, no company scoping) on the frontend side.
+assert.ok(api.includes("await fetch(`${API_URL}/health`)"), 'lib/api.ts health() must call GET /health directly (unauthenticated)');
+assert.ok(!/health\(\)[\s\S]{0,120}Authorization/.test(api), 'health() must not send an Authorization header - the endpoint is deliberately unauthenticated');
+
 console.log('Frontend API contract assertions passed.');

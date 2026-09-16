@@ -144,6 +144,7 @@ export default function NewCustomerPage() {
         {error && (
           <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm border border-red-200 dark:border-red-900">
             {error}
+            <Link href="/help/customer-creation-failed" className="mt-2 inline-block underline">Get help with this</Link>
           </div>
         )}
 

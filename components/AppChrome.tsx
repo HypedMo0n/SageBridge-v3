@@ -16,6 +16,7 @@ const META: Record<string, [string, string]> = {
   '/more': ['More', 'Workspace'],
   '/settings': ['Settings', 'Account and workspace'],
   '/pair': ['Connectors', 'Pair and manage office computers'],
+  '/help': ['Help Center', 'Guides and support'],
 };
 const BARE_PATHS = ['/login', '/signup', '/reset-password', '/verify-email', '/onboarding'];
 
@@ -38,5 +39,5 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
 
 function BottomNav({ path }: { path: string }) {
   const tabs = [['/dashboard', 'Home', House], ['/search', 'Search', MagnifyingGlass], ['/invoices', 'Work', Files], ['/more', 'More', DotsThreeOutline]] as const;
-  return <nav className="tabs" aria-label="Primary"><div className="tabs-inner">{tabs.map(([href, label, Icon]) => { const active = href === '/invoices' ? path.startsWith('/invoices') || path.startsWith('/quotes') : path.startsWith(href) || (href === '/more' && ['/customers', '/products', '/reports', '/sync', '/settings', '/pair'].some((value) => path.startsWith(value))); return <Link href={href} className={`tab ${active ? 'active' : ''}`} key={href}><Icon size={21} weight={active ? 'fill' : 'regular'} /><span>{label}</span></Link>; })}</div></nav>;
+  return <nav className="tabs" aria-label="Primary"><div className="tabs-inner">{tabs.map(([href, label, Icon]) => { const active = href === '/invoices' ? path.startsWith('/invoices') || path.startsWith('/quotes') : path.startsWith(href) || (href === '/more' && ['/customers', '/products', '/reports', '/sync', '/settings', '/pair', '/help'].some((value) => path.startsWith(value))); return <Link href={href} className={`tab ${active ? 'active' : ''}`} key={href}><Icon size={21} weight={active ? 'fill' : 'regular'} /><span>{label}</span></Link>; })}</div></nav>;
 }

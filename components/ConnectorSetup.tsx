@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { api, ApiError, type PairingCode, type ProvisioningState } from '@/lib/api';
+import { HelpLink } from '@/components/help/HelpLink';
+import { contextualHelpSlug } from '@/lib/help/contextual';
 
 const STAGES = [
   ['awaiting_connector', 'Waiting for connector'],
@@ -91,23 +93,23 @@ export function ConnectorSetup({ onboarding = false }: { onboarding?: boolean })
   return <div className="stack setup-stack">
     {error && <div className="error-box" role="alert">{error}</div>}
     {!!workspace?.companies.length && <section className="card"><p className="kicker">Company</p><label className="field-label">SageBridge company<select className="auth-input" value={company?.id || ''} onChange={(event) => selectCompany(event.target.value)}>{workspace.companies.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></section>}
-    {!company && <section className="card"><h2>No company available</h2><p className="notice">Refresh your workspace or ask an organization administrator to grant company access.</p><button className="btn btn-primary btn-block" onClick={() => refreshWorkspace().catch((reason) => setError(errorText(reason)))}>Refresh workspace</button></section>}
+    {!company && <section className="card"><h2>No company available</h2><p className="notice">Refresh your workspace or ask an organization administrator to grant company access.</p><button className="btn btn-primary btn-block" onClick={() => refreshWorkspace().catch((reason) => setError(errorText(reason)))}>Refresh workspace</button><div style={{ marginTop: 10 }}><HelpLink slug="no-company-available" /></div></section>}
 
     {company && <><section className="card">
       <p className="kicker">1 · Pair the office computer</p><h2>Connect Sage 50</h2>
       <p className="notice">Generate a one-time code, then enter it in SageBridge Connector on the office computer.</p>
       {pairing && !expired && <div className="pair-code" aria-label={`Pairing code ${pairing.code}`}><strong>{pairing.code}</strong><span>Expires {when(pairing.expiresAt)}</span></div>}
-      {pairing && expired && <div className="notice-box">This pairing code has expired. Generate a new one.</div>}
+      {pairing && expired && <div className="notice-box">This pairing code has expired. Generate a new one. <HelpLink slug="pairing-failed" label="Why does this happen?" /></div>}
       <button className="btn btn-primary btn-block" onClick={generateCode} disabled={busy}>{busy ? 'Requesting code…' : pairing && !expired ? 'Generate a new code' : 'Generate pairing code'}</button>
     </section>
 
     <section className="card">
       <p className="kicker">2 · Provision workspace</p><h2>Company data</h2>
       {!provisioning && <p className="notice">Provisioning status has not been reported.</p>}
-      {provisioning && <><span className={`status-pill status-${provisioning.state}`}>{provisioning.state.replaceAll('_', ' ')}</span><p className="notice">{provisioning.progress}% complete · Updated {when(provisioning.updatedAt)}</p>{provisioning.errorMessage && <div className="error-box">{provisioning.errorMessage}{provisioning.errorCode ? ` (${provisioning.errorCode})` : ''}</div>}{provisioning.state === 'failed' && <button className="btn btn-block" onClick={retryProvisioning} disabled={starting}>{starting ? 'Retrying…' : 'Retry provisioning'}</button>}<div className="progress-list">{STAGES.map(([state, label], index) => <div className="row" key={state}><span className={`step-dot step-${provisioning.state === 'failed' && index === currentStage ? 'failed' : index < currentStage || provisioning.state === 'ready' ? 'complete' : index === currentStage ? 'in_progress' : 'pending'}`} /><span className="row-main"><span className="row-title">{label}</span></span></div>)}</div>{counts.length > 0 && <div className="progress-list">{counts.map(([resource, count]) => <div className="row" key={resource}><span className="row-main row-title">{resource.replaceAll('_', ' ')}</span><span className="row-sub">{count}</span></div>)}</div>}</>}
+      {provisioning && <><span className={`status-pill status-${provisioning.state}`}>{provisioning.state.replaceAll('_', ' ')}</span><p className="notice">{provisioning.progress}% complete · Updated {when(provisioning.updatedAt)}</p>{provisioning.errorMessage && <div className="error-box">{provisioning.errorMessage}{provisioning.errorCode ? ` (${provisioning.errorCode})` : ''}<div style={{ marginTop: 8 }}><HelpLink slug={contextualHelpSlug({ code: provisioning.errorCode, message: provisioning.errorMessage }) || 'sync-failed'} /></div></div>}{provisioning.state === 'failed' && <button className="btn btn-block" onClick={retryProvisioning} disabled={starting}>{starting ? 'Retrying…' : 'Retry provisioning'}</button>}<div className="progress-list">{STAGES.map(([state, label], index) => <div className="row" key={state}><span className={`step-dot step-${provisioning.state === 'failed' && index === currentStage ? 'failed' : index < currentStage || provisioning.state === 'ready' ? 'complete' : index === currentStage ? 'in_progress' : 'pending'}`} /><span className="row-main"><span className="row-title">{label}</span></span></div>)}</div>{counts.length > 0 && <div className="progress-list">{counts.map(([resource, count]) => <div className="row" key={resource}><span className="row-main row-title">{resource.replaceAll('_', ' ')}</span><span className="row-sub">{count}</span></div>)}</div>}</>}
     </section>
 
-    <section className="card"><p className="kicker">Connector</p><div className="row"><span className={`connector-dot connector-${company.online ? 'online' : 'offline'}`} /><span className="row-main"><span className="row-title">{company.connectorStatus.replaceAll('_', ' ')}</span><span className="row-sub">{company.online ? 'Online' : 'Offline'} · Last seen {when(company.lastSeenAt)}</span></span></div><p className="notice">Connector access can be revoked when a connector record is available from the secured API.</p></section>
+    <section className="card"><p className="kicker">Connector</p><div className="row"><span className={`connector-dot connector-${company.online ? 'online' : 'offline'}`} /><span className="row-main"><span className="row-title">{company.connectorStatus.replaceAll('_', ' ')}</span><span className="row-sub">{company.online ? 'Online' : 'Offline'} · Last seen {when(company.lastSeenAt)}</span></span></div><p className="notice">Connector access can be revoked when a connector record is available from the secured API.</p>{!company.online && <HelpLink slug="connector-offline" />}</section>
     {onboarding && provisioning?.state === 'ready' && <Link className="btn btn-primary btn-block" href="/dashboard">Open SageBridge</Link>}</>}
   </div>;
 }
