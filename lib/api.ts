@@ -1,27 +1,19 @@
 import { auth } from './firebase';
+import { COMPANY_STORAGE_KEY } from './company-selection';
 
 // API Configuration
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://sagebridge-api.cheikhmounirk.workers.dev';
-const COMPANY_STORAGE_KEY = 'sagebridge-company-id';
 let selectedCompanyId = '';
-let selectedCompanyOwnerUid = '';
 
-function companyStorageKey(uid: string) { return `${COMPANY_STORAGE_KEY}:${uid}`; }
 function readCompanyId() {
-  const uid = auth.currentUser?.uid || '';
-  if (!uid) return '';
-  if (selectedCompanyOwnerUid !== uid) { selectedCompanyOwnerUid = uid; selectedCompanyId = ''; }
-  if (selectedCompanyId) return selectedCompanyId;
-  if (typeof window !== 'undefined') selectedCompanyId = window.localStorage.getItem(companyStorageKey(uid)) || '';
-  return selectedCompanyId;
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(COMPANY_STORAGE_KEY) || '';
 }
 export function setSelectedCompanyId(companyId: string) {
-  const uid = auth.currentUser?.uid || '';
-  selectedCompanyOwnerUid = uid;
   selectedCompanyId = companyId;
-  if (typeof window !== 'undefined' && uid) {
-    if (companyId) window.localStorage.setItem(companyStorageKey(uid), companyId);
-    else window.localStorage.removeItem(companyStorageKey(uid));
+  if (typeof window !== 'undefined') {
+    if (companyId) window.localStorage.setItem(COMPANY_STORAGE_KEY, companyId);
+    else window.localStorage.removeItem(COMPANY_STORAGE_KEY);
   }
 }
 export function getSelectedCompanyId() { return readCompanyId(); }
