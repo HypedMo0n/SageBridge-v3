@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const company = workspace?.companies.find((item) => item.id === companyId) || null;
   const loading = authLoading;
-  const setupComplete = isSetupComplete(workspace?.companies || []);
+  const setupComplete = isSetupComplete(company);
 
   const selectCompany = useCallback((nextCompanyId: string) => {
     if (!workspace?.companies.some((item) => item.id === nextCompanyId)) return;

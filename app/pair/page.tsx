@@ -25,7 +25,7 @@ export default function Page() {
           </div>
         </div>
         <p className="notice" style={{ margin: '0 0 12px', fontSize: 12 }}>
-          Download the connector and run the installer once on your office PC. It opens its own setup window - no command line is needed.
+          Download the connector, extract the ZIP, then open SageBridgeConnector.exe on your office PC. Its setup window opens automatically - no command line is needed.
         </p>
         <a className="btn btn-primary" href={CONNECTOR_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center' }}>
           Download Connector

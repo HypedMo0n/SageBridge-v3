@@ -10,13 +10,23 @@ export type LocalStep = 'download' | 'install' | 'pair';
 export const LOCAL_STEP_KEY = 'sagebridge.onboarding.localStep';
 export const LOCAL_STEPS: LocalStep[] = ['download', 'install', 'pair'];
 
-export function readLocalStep(storage: Pick<Storage, 'getItem'> | undefined): LocalStep {
-  const stored = storage?.getItem(LOCAL_STEP_KEY);
+// Scoped per company now that multi-company workspaces exist - one
+// account's companies can be at different local pre-pairing steps
+// (e.g. company A already paired, company B still needs a download
+// acknowledgement). Falls back to the bare key when no company id is
+// known yet (e.g. workspace still loading), so behavior degrades
+// gracefully rather than throwing.
+export function localStepStorageKey(companyId?: string | null): string {
+  return companyId ? `${LOCAL_STEP_KEY}:${companyId}` : LOCAL_STEP_KEY;
+}
+
+export function readLocalStep(storage: Pick<Storage, 'getItem'> | undefined, companyId?: string | null): LocalStep {
+  const stored = storage?.getItem(localStepStorageKey(companyId));
   return (LOCAL_STEPS as string[]).includes(stored || '') ? (stored as LocalStep) : 'download';
 }
 
-export function writeLocalStep(storage: Pick<Storage, 'setItem'> | undefined, step: LocalStep) {
-  storage?.setItem(LOCAL_STEP_KEY, step);
+export function writeLocalStep(storage: Pick<Storage, 'setItem'> | undefined, companyId: string | null | undefined, step: LocalStep) {
+  storage?.setItem(localStepStorageKey(companyId), step);
 }
 
 // From here on, the backend's own provisioning state machine (see
@@ -68,11 +78,28 @@ export function importItemStatus(resourceState: ProvisioningStatus, current: Pro
 }
 
 /**
- * The single source of truth for "has this workspace finished onboarding".
- * A connected connector is NOT completion - only the provisioning FSM's
- * terminal 'ready' state means Sage 50 data has actually finished
- * importing. Used by AuthProvider to gate protected routes.
+ * Whether the backend has actually detected/selected a Sage 50 company yet
+ * ('company_selected' or later), as distinct from merely checking for one
+ * ('checking_sage'). Claiming detection during checking_sage is factually
+ * wrong - the connector hasn't found anything yet at that point.
  */
-export function isSetupComplete(companies: Array<Pick<CompanyDetail, 'provisioningState'>>): boolean {
-  return companies.some((company) => company.provisioningState === 'ready');
+export function sageDetectionStatus(state: ProvisioningStatus | undefined): 'checking' | 'detected' {
+  if (!state) return 'checking';
+  const companySelectedIdx = FSM_ORDER.indexOf('company_selected');
+  const idx = FSM_ORDER.indexOf(state);
+  return idx >= companySelectedIdx ? 'detected' : 'checking';
+}
+
+/**
+ * The single source of truth for "has THE CURRENTLY SELECTED company
+ * finished onboarding". Deliberately scoped to one company, not "any
+ * company on this account" - with multi-company workspaces, one company
+ * being ready must never unlock the app for a different, still-incomplete
+ * selected company. A connected connector is also NOT completion - only
+ * the provisioning FSM's terminal 'ready' state means Sage 50 data has
+ * actually finished importing. Used by AuthProvider to gate protected
+ * routes for the company the user currently has selected.
+ */
+export function isSetupComplete(company: Pick<CompanyDetail, 'provisioningState'> | null | undefined): boolean {
+  return company?.provisioningState === 'ready';
 }

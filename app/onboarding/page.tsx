@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
 import { api, type PairingCode, type ProvisioningState } from '@/lib/api';
-import { deriveStage, importItemStatus, IMPORT_ITEMS, readLocalStep, writeLocalStep, type LocalStep } from '@/lib/onboarding-stage';
+import { deriveStage, importItemStatus, sageDetectionStatus, IMPORT_ITEMS, readLocalStep, writeLocalStep, type LocalStep } from '@/lib/onboarding-stage';
 
 const CONNECTOR_DOWNLOAD_URL = 'https://github.com/HypedMo0n/SageBridge-Connector/releases/download/beta-v1.1.0/sagebridge-connector-beta-v1.1.0.zip';
 
@@ -14,7 +14,7 @@ function errorText(reason: unknown) {
 
 export default function OnboardingPage() {
   const { company, refreshWorkspace } = useAuth();
-  const [localStep, setLocalStep] = useState<LocalStep>(() => readLocalStep(typeof window === 'undefined' ? undefined : window.localStorage));
+  const [localStep, setLocalStep] = useState<LocalStep>(() => readLocalStep(typeof window === 'undefined' ? undefined : window.localStorage, company?.id));
   const [pairing, setPairing] = useState<PairingCode | null>(null);
   const [provisioning, setProvisioning] = useState<ProvisioningState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,7 +36,7 @@ export default function OnboardingPage() {
 
   const stage = useMemo(() => deriveStage(company, provisioning, localStep), [company, provisioning, localStep]);
 
-  const advanceLocalStep = (next: LocalStep) => { writeLocalStep(typeof window === 'undefined' ? undefined : window.localStorage, next); setLocalStep(next); };
+  const advanceLocalStep = (next: LocalStep) => { writeLocalStep(typeof window === 'undefined' ? undefined : window.localStorage, company?.id, next); setLocalStep(next); };
 
   const generateCode = useCallback(async (companyId: string) => {
     setBusy(true); setError('');
@@ -87,15 +87,15 @@ export default function OnboardingPage() {
 
         {stage === 'install' && (
           <section className="card onboarding-step-card">
-            <h2 className="step-heading">Install SageBridge Connector</h2>
-            <p className="notice">Run the installer on the Windows computer where Sage 50 is installed. It opens its own setup window - no command line is needed.</p>
+            <h2 className="step-heading">Open SageBridge Connector</h2>
+            <p className="notice">Extract the downloaded ZIP, then open SageBridgeConnector.exe on the Windows computer where Sage 50 is installed. SageBridge will open its setup window automatically - no command line is required.</p>
             <button className="btn btn-block" style={{ marginBottom: 8 }} onClick={() => advanceLocalStep('download')}>← Back to download</button>
             <button
               className="btn btn-primary btn-block"
               disabled={busy}
               onClick={() => { advanceLocalStep('pair'); if (company) generateCode(company.id); }}
             >
-              {busy ? 'Requesting code…' : "I've installed the connector"}
+              {busy ? 'Requesting code…' : "I've opened SageBridge Connector"}
             </button>
           </section>
         )}
@@ -131,7 +131,11 @@ export default function OnboardingPage() {
           <section className="card onboarding-step-card">
             <h2 className="step-heading">Importing your Sage data</h2>
             <div className="status-line"><span className="status-check">✓</span> Computer connected</div>
-            <div className="status-line"><span className="status-check">✓</span> Sage 50 detected</div>
+            {sageDetectionStatus(provisioning.state) === 'detected' ? (
+              <div className="status-line"><span className="status-check">✓</span> Sage 50 detected</div>
+            ) : (
+              <div className="status-line"><span className="status-spinner" /> Checking Sage 50…</div>
+            )}
             <div className="import-list">
               {IMPORT_ITEMS.map(({ state, label }) => {
                 const status = importItemStatus(state, provisioning.state);

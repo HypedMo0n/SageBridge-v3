@@ -35,13 +35,34 @@ test('persists selection and scopes every API request with X-Company-Id', () => 
   assert.deepEqual(companyRequestHeaders(storage), { 'X-Company-Id': 'company-b' });
 });
 
-test('API client and chrome apply the selected company', () => {
+// The current architecture loads companies via api.bootstrap() (one call
+// returns the user, organization, and every company), not a separate
+// getCompanies()/GET /api/companies request - that endpoint and method
+// don't exist in this frontend. Company-scoped reads/writes (customers,
+// invoices, products, quotes, jobs) still resolve X-Company-Id from the
+// same COMPANY_STORAGE_KEY this file defines, just via lib/api.ts's own
+// readCompanyId() rather than by calling companyRequestHeaders() directly.
+test('companies are loaded via api.bootstrap(), not a separate companies endpoint', () => {
   const apiSource = readFileSync(new URL('../lib/api.ts', import.meta.url), 'utf8');
+  assert.match(apiSource, /async bootstrap\(\)[\s\S]*?companies/, 'bootstrap() should be the source of the companies list');
+  assert.doesNotMatch(apiSource, /getCompanies\(\)/, 'no separate getCompanies() method exists in the current architecture');
+});
+
+test('company-scoped API requests resolve X-Company-Id from the same stored selection', () => {
+  const apiSource = readFileSync(new URL('../lib/api.ts', import.meta.url), 'utf8');
+  assert.match(apiSource, /import\s*\{\s*COMPANY_STORAGE_KEY\s*\}\s*from\s*'\.\/company-selection'/, 'lib/api.ts must read the same storage key company-selection.ts defines, not a second one');
+  assert.match(apiSource, /'X-Company-Id':\s*companyId/);
+});
+
+test('AppChrome loads companies from bootstrap and exposes a company selector', () => {
   const chromeSource = readFileSync(new URL('../components/AppChrome.tsx', import.meta.url), 'utf8');
-  assert.match(apiSource, /companyRequestHeaders\(window\.localStorage\)/);
-  assert.match(apiSource, /getCompanies\(\)/);
-  assert.match(apiSource, /\/api\/companies', undefined, false\)/);
+  assert.match(chromeSource, /api\.bootstrap\(\)/);
+  assert.match(chromeSource, /resolveSelectedCompany\(/, 'must fall back cleanly when the stored selection is invalid or missing');
   assert.match(chromeSource, /aria-label="Select company"/);
+});
+
+test('switching the selected company persists it and reloads to refetch company-scoped data', () => {
+  const chromeSource = readFileSync(new URL('../components/AppChrome.tsx', import.meta.url), 'utf8');
   assert.match(chromeSource, /saveSelectedCompany\(window\.localStorage/);
   assert.match(chromeSource, /window\.location\.reload\(\)/);
 });
