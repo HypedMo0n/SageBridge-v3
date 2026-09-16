@@ -10,7 +10,7 @@ import {
   saveSelectedCompany,
 } from '@/lib/company-selection';
 
-const CONNECTOR_DOWNLOAD_URL = 'https://github.com/HypedMo0n/SageBridge-Connector/releases/latest';
+const CONNECTOR_DOWNLOAD_URL = 'https://github.com/HypedMo0n/SageBridge-Connector/releases/latest/download/sagebridge-connector-installer.zip';
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -41,7 +41,6 @@ export default function OnboardingPage() {
   }, []);
 
   const handleDone = () => {
-    // Only require a company selection if companies exist
     if (companies.length > 0 && !selected) return;
     if (selected) {
       saveSelectedCompany(window.localStorage, selected);
@@ -59,6 +58,8 @@ export default function OnboardingPage() {
       </main>
     );
   }
+
+  const hasCompanies = companies.length > 0;
 
   return (
     <main className="setup">
@@ -110,6 +111,8 @@ export default function OnboardingPage() {
             <h3 className="step-title">Start Syncing</h3>
             <p className="step-desc">
               After pairing, your customers, invoices, and products appear here.
+              Your company name comes from your Sage 50 file — it shows up automatically
+              after the connector connects.
             </p>
           </div>
           <button
@@ -126,8 +129,21 @@ export default function OnboardingPage() {
           </p>
         )}
 
+        {/* Empty state: no companies yet */}
+        {!hasCompanies && (
+          <div className="empty-state" style={{ marginTop: 20, padding: '16px', background: 'var(--color-card)', borderRadius: 12, border: '1px solid var(--color-divider)' }}>
+            <h3 className="step-title" style={{ marginBottom: 6 }}>No companies yet</h3>
+            <p className="step-desc" style={{ marginBottom: 12 }}>
+              Your company will appear here once you install the connector on your office PC
+              and pair it with your Sage 50 company file. Go through steps 1 and 2 above,
+              then come back and refresh this page.
+            </p>
+            <Link href="/pair" className="btn small-btn">Go to Pairing</Link>
+          </div>
+        )}
+
         {/* Company selection — only if companies exist */}
-        {companies.length > 0 && (
+        {hasCompanies && (
           <>
             <h2 className="kicker" style={{ marginTop: 24 }}>Select Your Company</h2>
             <div className="company-list">
@@ -153,7 +169,7 @@ export default function OnboardingPage() {
             disabled={companies.length > 0 && !selected}
             onClick={handleDone}
           >
-            {companies.length > 0 ? 'Finish Setup' : 'I\'ve installed the connector'}
+            {hasCompanies ? 'Finish Setup' : 'I\'ve installed the connector'}
           </button>
           <Link href="/dashboard" className="btn">Skip for now</Link>
         </div>
