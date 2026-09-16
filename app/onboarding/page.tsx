@@ -10,23 +10,7 @@ import {
   saveSelectedCompany,
 } from '@/lib/company-selection';
 
-const STEPS = [
-  {
-    id: 'download',
-    title: 'Download the connector',
-    description: 'Install the SageBridge connector on a PC where Sage 50 is installed.',
-  },
-  {
-    id: 'connect',
-    title: 'Connect your company',
-    description: 'Run the connector and log in with your Sage 50 credentials.',
-  },
-  {
-    id: 'sync',
-    title: 'See your data',
-    description: 'Your customers, invoices, and products sync to the cloud automatically.',
-  },
-];
+const CONNECTOR_DOWNLOAD_URL = 'https://github.com/HypedMo0n/SageBridge-Connector/releases/latest';
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -36,6 +20,13 @@ export default function OnboardingPage() {
   const [selected, setSelected] = useState('');
 
   useEffect(() => {
+    // Skip onboarding for returning users who already completed it
+    const completed = window.localStorage.getItem('sb.onboardingComplete');
+    if (completed === 'true') {
+      router.replace('/dashboard');
+      return;
+    }
+
     api.getCompanies()
       .then(list => {
         setCompanies(list);
@@ -44,45 +35,101 @@ export default function OnboardingPage() {
         setLoading(false);
       })
       .catch(err => {
-        setError(err.message || 'Failed to load companies');
+        setError(err.message || 'Unable to reach the server');
         setLoading(false);
       });
   }, []);
 
   const handleDone = () => {
-    if (!selected) return;
-    saveSelectedCompany(window.localStorage, selected);
-    // Mark onboarding as complete
+    // Only require a company selection if companies exist
+    if (companies.length > 0 && !selected) return;
+    if (selected) {
+      saveSelectedCompany(window.localStorage, selected);
+    }
     window.localStorage.setItem('sb.onboardingComplete', 'true');
     router.push('/dashboard');
   };
 
-  if (loading) return <main className="setup"><div className="setup-card"><p className="notice">Loading…</p></div></main>;
-  if (error) return <main className="setup"><div className="setup-card"><p className="notice error">{error}</p><Link href="/dashboard" className="btn">Back</Link></div></main>;
+  if (loading) {
+    return (
+      <main className="setup">
+        <div className="setup-card">
+          <p className="notice">Loading your setup…</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="setup">
       <div className="setup-card">
         <h1 className="kicker">Welcome to SageBridge</h1>
         <p className="notice">
-          Let&apos;s get your Sage 50 data into the cloud. It takes about 2 minutes.
+          Connect your Sage 50 company to the cloud in 3 steps. No credit card required.
         </p>
 
-        <div className="onboarding-steps">
-          {STEPS.map((step, i) => (
-            <div key={step.id} className="onboarding-step">
-              <span className="step-number">{i + 1}</span>
-              <div>
-                <h3 className="step-title">{step.title}</h3>
-                <p className="step-desc">{step.description}</p>
-              </div>
-            </div>
-          ))}
+        {/* Step 1: Download — always visible */}
+        <div className="onboarding-step">
+          <span className="step-number">1</span>
+          <div style={{ flex: 1 }}>
+            <h3 className="step-title">Download the Connector</h3>
+            <p className="step-desc">
+              The connector runs on your office PC where Sage 50 is installed. It syncs
+              your data to the cloud automatically.
+            </p>
+          </div>
+          <a
+            className="btn primary small-btn"
+            href={CONNECTOR_DOWNLOAD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Download
+          </a>
         </div>
 
+        {/* Step 2: Install & configure */}
+        <div className="onboarding-step">
+          <span className="step-number">2</span>
+          <div style={{ flex: 1 }}>
+            <h3 className="step-title">Install & Configure</h3>
+            <p className="step-desc">
+              Run the connector on your office PC. It will ask for your Sage 50 login
+              and creates a pairing link.
+            </p>
+          </div>
+          <Link className="btn small-btn" href="/pair">
+            How to Pair
+          </Link>
+        </div>
+
+        {/* Step 3: Sync */}
+        <div className="onboarding-step">
+          <span className="step-number">3</span>
+          <div style={{ flex: 1 }}>
+            <h3 className="step-title">Start Syncing</h3>
+            <p className="step-desc">
+              After pairing, your customers, invoices, and products appear here.
+            </p>
+          </div>
+          <button
+            className="btn primary small-btn"
+            onClick={() => window.location.reload()}
+          >
+            Refresh
+          </button>
+        </div>
+
+        {error && (
+          <p className="notice error" style={{ marginTop: 12 }}>
+            {error} — the setup steps above still work without a server connection.
+          </p>
+        )}
+
+        {/* Company selection — only if companies exist */}
         {companies.length > 0 && (
           <>
-            <h2 className="kicker" style={{ marginTop: 20 }}>Select Your Company</h2>
+            <h2 className="kicker" style={{ marginTop: 24 }}>Select Your Company</h2>
             <div className="company-list">
               {companies.map(c => (
                 <button
@@ -100,10 +147,15 @@ export default function OnboardingPage() {
           </>
         )}
 
-        <div className="setup-actions">
-          <button className="btn primary" disabled={!selected} onClick={handleDone}>
-            Finish Setup
+        <div className="setup-actions" style={{ marginTop: 20 }}>
+          <button
+            className="btn primary"
+            disabled={companies.length > 0 && !selected}
+            onClick={handleDone}
+          >
+            {companies.length > 0 ? 'Finish Setup' : 'I\'ve installed the connector'}
           </button>
+          <Link href="/dashboard" className="btn">Skip for now</Link>
         </div>
       </div>
     </main>

@@ -313,6 +313,11 @@ a {
   margin: 0;
   line-height: 1.4;
 }
+.small-btn {
+  padding: 8px 12px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
 
 .sync-dot {
   width: 6px;
