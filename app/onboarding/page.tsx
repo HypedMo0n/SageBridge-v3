@@ -1,178 +1,232 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { api, type CompanyDetail } from '@/lib/api';
-import {
-  COMPANY_STORAGE_KEY,
-  resolveSelectedCompany,
-  saveSelectedCompany,
-} from '@/lib/company-selection';
+import { useAuth } from '@/components/AuthProvider';
+import { api, type CompanyDetail, type PairingCode, type ProvisioningState } from '@/lib/api';
 
-const CONNECTOR_DOWNLOAD_URL = 'https://github.com/HypedMo0n/SageBridge-Connector/releases/latest/download/sagebridge-connector-installer.zip';
+const CONNECTOR_DOWNLOAD_URL = 'https://github.com/HypedMo0n/SageBridge-Connector/releases/download/beta-v1.1.0/sagebridge-connector-beta-v1.1.0.zip';
+
+type Step = 'download' | 'install' | 'pair' | 'detect-sage' | 'confirm-company' | 'importing' | 'ready';
 
 export default function OnboardingPage() {
-  const router = useRouter();
-  const [companies, setCompanies] = useState<CompanyDetail[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { workspace, company, refreshWorkspace } = useAuth();
+  const [step, setStep] = useState<Step>('download');
+  const [pairing, setPairing] = useState<PairingCode | null>(null);
+  const [provisioning, setProvisioning] = useState<ProvisioningState | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [selected, setSelected] = useState('');
+  const [detectedCompany, setDetectedCompany] = useState<CompanyDetail | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const loadProvisioning = useCallback(async (companyId: string) => {
+    try {
+      const next = await api.getProvisioning(companyId);
+      setProvisioning(next);
+      return next;
+    } catch (reason) {
+      console.error('Could not load provisioning:', reason);
+      return null;
+    }
+  }, []);
+
+  const generateCode = useCallback(async (companyId: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      const next = await api.createPairingCode(companyId);
+      setPairing(next);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not generate pairing code');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const startProvisioning = useCallback(async (companyId: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      const next = await api.startProvisioning(companyId);
+      setProvisioning(next);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not start provisioning');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  // Determine step from state
   useEffect(() => {
-    // Skip onboarding for returning users who already completed it
-    const completed = window.localStorage.getItem('sb.onboardingComplete');
-    if (completed === 'true') {
-      router.replace('/dashboard');
+    if (!company) {
+      if (pairing) setStep('pair');
+      else setStep('download');
       return;
     }
 
-    api.bootstrap()
-      .then(state => {
-        setCompanies(state.companies);
-        const stored = window.localStorage.getItem(COMPANY_STORAGE_KEY);
-        setSelected(resolveSelectedCompany(state.companies, stored) ?? '');
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err.message || 'Unable to reach the server');
-        setLoading(false);
-      });
-  }, []);
-
-  const handleDone = () => {
-    if (companies.length > 0 && !selected) return;
-    if (selected) {
-      saveSelectedCompany(window.localStorage, selected);
+    if (company.online && company.connectorStatus === 'connected') {
+      if (provisioning?.state === 'ready') setStep('ready');
+      else if (provisioning?.state === 'failed') setStep('importing');
+      else if (provisioning) setStep('importing');
+      else setStep('detect-sage');
+    } else if (company.connectorStatus === 'connected') {
+      setStep('detect-sage');
+    } else {
+      setStep('pair');
     }
-    window.localStorage.setItem('sb.onboardingComplete', 'true');
-    router.push('/dashboard');
+  }, [company, provisioning, pairing]);
+
+  // Poll for provisioning updates
+  useEffect(() => {
+    if (!company || step === 'download' || step === 'install' || step === 'pair') return;
+    const id = setInterval(() => { loadProvisioning(company.id).catch(() => {}); }, 5000);
+    timerRef.current = id;
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [company, step, loadProvisioning]);
+
+  // Check if Sage is detected (connector heartbeat received)
+  useEffect(() => {
+    if (step !== 'detect-sage' || !company) return;
+    if (company.sageCompanyName && company.sageCompanyName !== 'Sage company') {
+      setDetectedCompany(company);
+      setStep('confirm-company');
+    }
+  }, [step, company]);
+
+  const sageCompanyName = detectedCompany?.sageCompanyName || company?.sageCompanyName;
+
+  const provisioningLabel = (state: string) => {
+    const labels: Record<string, string> = {
+      awaiting_connector: 'Waiting for connector',
+      connector_connected: 'Connector connected',
+      checking_sage: 'Checking Sage 50 connection',
+      company_selected: 'Company selected',
+      provisioning: 'Setting up workspace',
+      syncing_customers: 'Importing customers',
+      syncing_invoices: 'Importing invoices',
+      syncing_products: 'Importing products',
+      syncing_quotes: 'Importing quotes',
+      finalizing: 'Finalizing setup',
+      ready: 'Workspace ready',
+      failed: 'Setup failed',
+    };
+    return labels[state] || state;
   };
 
-  if (loading) {
-    return (
-      <main className="setup">
-        <div className="setup-card">
-          <p className="notice">Loading your setup…</p>
-        </div>
-      </main>
-    );
-  }
+  const importStep = (state: string) => {
+    const order = ['awaiting_connector', 'connector_connected', 'checking_sage', 'company_selected', 'provisioning', 'syncing_customers', 'syncing_invoices', 'syncing_products', 'syncing_quotes', 'finalizing', 'ready'];
+    return order.indexOf(state);
+  };
 
-  const hasCompanies = companies.length > 0;
+  const currentImportStep = provisioning ? importStep(provisioning.state) : 0;
+  const isComplete = (idx: number) => provisioning?.state === 'ready' || (currentImportStep > idx && provisioning?.state !== 'failed');
 
   return (
     <main className="setup">
       <div className="setup-card">
         <h1 className="kicker">Welcome to SageBridge</h1>
-        <p className="notice">
-          Connect your Sage 50 company to the cloud in 3 steps. No credit card required.
-        </p>
 
-        {/* Step 1: Download — always visible */}
-        <div className="onboarding-step">
-          <span className="step-number">1</span>
-          <div style={{ flex: 1 }}>
-            <h3 className="step-title">Download the Connector</h3>
-            <p className="step-desc">
-              The connector runs on your office PC where Sage 50 is installed. It syncs
-              your data to the cloud automatically.
+        {/* STEP 1: Download Connector */}
+        {step === 'download' && (
+          <section className="card onboarding-step-card">
+            <h2 className="step-heading">Connect Sage 50</h2>
+            <p className="notice">SageBridge securely connects to Sage 50 through a small Windows app installed on the computer where Sage 50 is used.</p>
+            <a className="btn primary btn-block" href={CONNECTOR_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
+              Download SageBridge Connector
+            </a>
+            <p className="notice" style={{ marginTop: 8, fontSize: 11, color: 'var(--color-neutral-500)' }}>
+              Windows · Sage 50 Canada
             </p>
-          </div>
-          <a
-            className="btn primary small-btn"
-            href={CONNECTOR_DOWNLOAD_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Download
-          </a>
-        </div>
-
-        {/* Step 2: Install & configure */}
-        <div className="onboarding-step">
-          <span className="step-number">2</span>
-          <div style={{ flex: 1 }}>
-            <h3 className="step-title">Install & Configure</h3>
-            <p className="step-desc">
-              Run the connector on your office PC. It will ask for your Sage 50 login
-              and creates a pairing link.
-            </p>
-          </div>
-          <Link className="btn small-btn" href="/pair">
-            How to Pair
-          </Link>
-        </div>
-
-        {/* Step 3: Sync */}
-        <div className="onboarding-step">
-          <span className="step-number">3</span>
-          <div style={{ flex: 1 }}>
-            <h3 className="step-title">Start Syncing</h3>
-            <p className="step-desc">
-              After pairing, your customers, invoices, and products appear here.
-              Your company name comes from your Sage 50 file — it shows up automatically
-              after the connector connects.
-            </p>
-          </div>
-          <button
-            className="btn primary small-btn"
-            onClick={() => window.location.reload()}
-          >
-            Refresh
-          </button>
-        </div>
-
-        {error && (
-          <p className="notice error" style={{ marginTop: 12 }}>
-            {error} — the setup steps above still work without a server connection.
-          </p>
+          </section>
         )}
 
-        {/* Empty state: no companies yet */}
-        {!hasCompanies && (
-          <div className="empty-state" style={{ marginTop: 20, padding: '16px', background: 'var(--color-card)', borderRadius: 12, border: '1px solid var(--color-divider)' }}>
-            <h3 className="step-title" style={{ marginBottom: 6 }}>No companies yet</h3>
-            <p className="step-desc" style={{ marginBottom: 12 }}>
-              Your company will appear here once you install the connector on your office PC
-              and pair it with your Sage 50 company file. Go through steps 1 and 2 above,
-              then come back and refresh this page.
-            </p>
-            <Link href="/pair" className="btn small-btn">Go to Pairing</Link>
-          </div>
+        {/* STEP 2: Install */}
+        {step !== 'download' && step !== 'ready' && (
+          <section className="card onboarding-step-card">
+            <h2 className="step-heading">Install SageBridge Connector</h2>
+            <p className="notice">Install and open SageBridge Connector on the Windows computer where Sage 50 is installed.</p>
+          </section>
         )}
 
-        {/* Company selection — only if companies exist */}
-        {hasCompanies && (
-          <>
-            <h2 className="kicker" style={{ marginTop: 24 }}>Select Your Company</h2>
-            <div className="company-list">
-              {companies.map(c => (
-                <button
-                  key={c.id}
-                  className={`company-option ${selected === c.id ? 'selected' : ''}`}
-                  onClick={() => setSelected(c.id)}
-                >
-                  <span className="company-name">{c.name}</span>
-                  <span className="company-meta">
-                    {c.connectorStatus === 'connected' ? '● Online' : '○ Offline'}
+        {/* STEP 3: Pair */}
+        {(step === 'pair' || step === 'detect-sage' || step === 'confirm-company' || step === 'importing') && (
+          <section className="card onboarding-step-card">
+            <h2 className="step-heading">Pair your computer</h2>
+            <p className="notice">Generate a one-time code, then enter it in SageBridge Connector on the office computer.</p>
+            {pairing && (
+              <div className="pair-code-display">
+                <strong>{pairing.code}</strong>
+                <span>Expires {new Date(pairing.expiresAt).toLocaleTimeString()}</span>
+              </div>
+            )}
+            <button className="btn btn-primary btn-block" onClick={() => company && generateCode(company.id)} disabled={busy || !company}>
+              {busy ? 'Requesting code…' : pairing ? 'Generate new code' : 'Generate pairing code'}
+            </button>
+          </section>
+        )}
+
+        {/* STEP 4: Detect Sage */}
+        {step === 'detect-sage' && (
+          <section className="card onboarding-step-card">
+            <h2 className="step-heading">Connect to Sage 50</h2>
+            <div className="status-line"><span className="status-check">✓</span> Computer connected</div>
+            <div className="status-line loading"><span className="status-spinner" /> Checking Sage 50…</div>
+            <p className="notice">Your computer is connected. Waiting for Sage 50…</p>
+          </section>
+        )}
+
+        {/* STEP 5: Confirm Company */}
+        {step === 'confirm-company' && sageCompanyName && (
+          <section className="card onboarding-step-card">
+            <h2 className="step-heading">Connect to Sage 50</h2>
+            <div className="status-line"><span className="status-check">✓</span> Computer connected</div>
+            <div className="status-line"><span className="status-check">✓</span> Sage 50 detected</div>
+            <div className="company-reveal">
+              <p className="notice">Found your Sage company:</p>
+              <strong className="company-name-reveal">{sageCompanyName}</strong>
+            </div>
+            <button className="btn btn-primary btn-block" onClick={() => company && startProvisioning(company.id)} disabled={busy}>
+              Connect this company
+            </button>
+          </section>
+        )}
+
+        {/* STEP 6: Importing */}
+        {step === 'importing' && provisioning && (
+          <section className="card onboarding-step-card">
+            <h2 className="step-heading">Importing your Sage data</h2>
+            <div className="import-list">
+              {(['syncing_customers', 'syncing_invoices', 'syncing_products', 'syncing_quotes'] as const).map((state, idx) => (
+                <div key={state} className={`import-item ${isComplete(idx) ? 'complete' : currentImportStep === idx ? 'active' : 'pending'}`}>
+                  <span className="import-icon">{isComplete(idx) ? '✓' : currentImportStep === idx ? '○' : '·'}</span>
+                  <span className="import-label">
+                    {idx === 0 ? 'Customers' : idx === 1 ? 'Invoices' : idx === 2 ? 'Products & services' : 'Quotes'}
                   </span>
-                </button>
+                </div>
               ))}
             </div>
-          </>
+            {provisioning.state === 'failed' && (
+              <div className="error-box">We connected successfully, but some Sage data could not be imported.</div>
+            )}
+          </section>
         )}
 
-        <div className="setup-actions" style={{ marginTop: 20 }}>
-          <button
-            className="btn primary"
-            disabled={companies.length > 0 && !selected}
-            onClick={handleDone}
-          >
-            {hasCompanies ? 'Finish Setup' : 'I\'ve installed the connector'}
-          </button>
-          <Link href="/dashboard" className="btn">Skip for now</Link>
-        </div>
+        {/* STEP 7: Ready */}
+        {step === 'ready' && (
+          <section className="card onboarding-step-card">
+            <h2 className="step-heading">SageBridge is ready</h2>
+            <p className="notice">{sageCompanyName || company?.name || 'Your company'} is connected and synced.</p>
+            <Link className="btn btn-primary btn-block" href="/dashboard">Open SageBridge</Link>
+          </section>
+        )}
+
+        {error && <p className="notice error">{error}</p>}
+
+        {step !== 'ready' && (
+          <p className="notice" style={{ marginTop: 12, fontSize: 11 }}>
+            Need help? <Link href="/pair">View pairing instructions</Link>
+          </p>
+        )}
       </div>
     </main>
   );

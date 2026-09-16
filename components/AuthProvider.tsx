@@ -11,6 +11,7 @@ interface AuthContextValue {
   loading: boolean;
   workspace: BootstrapState | null;
   company: CompanyDetail | null;
+  setupComplete: boolean;
   selectCompany: (companyId: string) => void;
   refreshWorkspace: () => Promise<BootstrapState>;
   getIdToken: (forceRefresh?: boolean) => Promise<string>;
@@ -67,20 +68,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authLoading, pathname, router, user]);
 
+  const company = workspace?.companies.find((item) => item.id === companyId) || null;
+  const loading = authLoading;
+  const setupComplete = !!workspace?.companies.some((item) => item.connectorStatus === 'connected' || item.provisioningState === 'ready');
+
   const selectCompany = useCallback((nextCompanyId: string) => {
     if (!workspace?.companies.some((item) => item.id === nextCompanyId)) return;
     setSelectedCompanyId(nextCompanyId);
     setCompanyId(nextCompanyId);
   }, [workspace]);
+
   const getIdToken = useCallback(async (forceRefresh = false) => {
     if (!auth.currentUser) throw new Error('Your session has ended. Please sign in again.');
     return auth.currentUser.getIdToken(forceRefresh);
   }, []);
+
   const logout = useCallback(async () => { setSelectedCompanyId(''); await firebaseSignOut(auth); router.replace('/login'); }, [router]);
-  const company = workspace?.companies.find((item) => item.id === companyId) || null;
-  const loading = authLoading;
-  const value = useMemo(() => ({ user, loading, workspace, company, selectCompany, refreshWorkspace, getIdToken, logout }), [user, loading, workspace, company, selectCompany, refreshWorkspace, getIdToken, logout]);
+
+  const value = useMemo(() => ({ user, loading, workspace, company, setupComplete, selectCompany, refreshWorkspace, getIdToken, logout }), [user, loading, workspace, company, setupComplete, selectCompany, refreshWorkspace, getIdToken, logout]);
   const permitted = PUBLIC_PATHS.includes(pathname) || (!!user && (user.emailVerified || pathname === '/verify-email'));
+
+  // Route gating: verified user with incomplete setup must go to /onboarding
+  useEffect(() => {
+    if (authLoading || !user?.emailVerified) return;
+    const isOnboarding = pathname === '/onboarding';
+    const isSetupIncomplete = !setupComplete;
+
+    if (isSetupIncomplete && !isOnboarding) {
+      const protectedRoutes = ['/dashboard', '/customers', '/invoices', '/products', '/quotes', '/reports', '/search', '/more'];
+      if (protectedRoutes.some(route => pathname.startsWith(route))) {
+        router.replace('/onboarding');
+      }
+    }
+  }, [authLoading, user, setupComplete, pathname, router]);
 
   return <AuthContext.Provider value={value}>{loading || !permitted ? <AuthLoading /> : children}</AuthContext.Provider>;
 }

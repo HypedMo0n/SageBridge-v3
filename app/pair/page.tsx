@@ -2,7 +2,7 @@
 
 import { PlugsConnected, Download } from '@phosphor-icons/react';
 
-const CONNECTOR_DOWNLOAD_URL = 'https://github.com/HypedMo0n/SageBridge-Connector/releases/latest/download/sagebridge-connector-installer.zip';
+const CONNECTOR_DOWNLOAD_URL = 'https://github.com/HypedMo0n/SageBridge-Connector/releases/download/beta-v1.1.0/sagebridge-connector-beta-v1.1.0.zip';
 
 export default function Page() {
   return (

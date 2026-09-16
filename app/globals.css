@@ -319,6 +319,86 @@ a {
   flex-shrink: 0;
 }
 
+/* Onboarding 7-step journey */
+.onboarding-step-card {
+  margin-bottom: 16px;
+}
+.step-heading {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 8px;
+}
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin: 6px 0;
+}
+.status-check {
+  color: #16a34a;
+  font-weight: 600;
+}
+.status-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.pair-code-display {
+  background: var(--color-card);
+  border: 1px solid var(--color-accent);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  margin: 12px 0;
+}
+.pair-code-display strong {
+  display: block;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 4px;
+  color: var(--color-accent);
+}
+.pair-code-display span {
+  font-size: 12px;
+  color: var(--color-neutral-500);
+}
+.company-reveal {
+  text-align: center;
+  padding: 16px 0;
+}
+.company-name-reveal {
+  display: block;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--color-accent);
+  margin-top: 8px;
+}
+.import-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+.import-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--color-neutral-500);
+}
+.import-item.complete { color: #16a34a; }
+.import-item.active { color: var(--color-text); font-weight: 500; }
+.import-icon {
+  width: 20px;
+  text-align: center;
+}
+
 .sync-dot {
   width: 6px;
   height: 6px;
