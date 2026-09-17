@@ -63,6 +63,12 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
     sub = 'Four-step create flow';
   }
 
+  // Real connector-liveness signal for the header chip - previously this
+  // always said "Synced" regardless of whether the connector had ever
+  // actually reported in, which was misleading exactly when a user most
+  // needed to know sync had stopped.
+  const selectedCompany = companies.find((company) => company.id === companyId);
+
   const pushed = !['/dashboard', '/search', '/invoices', '/more'].includes(path);
   const toggle = () => {
     const next = !day;
@@ -104,7 +110,10 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
           <button className="icon-btn" onClick={toggle} aria-label="Toggle day and night theme">
             {day ? <Moon size={15} /> : <Sun size={15} />}
           </button>
-          <Link href="/sync" className="sync-chip"><i className="sync-dot" />Synced</Link>
+          <Link href="/sync" className="sync-chip">
+            <i className={`sync-dot ${selectedCompany?.online ? '' : 'offline'}`} />
+            {selectedCompany ? (selectedCompany.online ? 'Synced' : 'Offline') : '…'}
+          </Link>
         </div>
       </header>
       <main className="main" id="content">{children}</main>

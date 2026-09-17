@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { api, type Customer, type Product } from '@/lib/api';
+import { api, type Capabilities, type Customer, type Product } from '@/lib/api';
 import { formatMoney } from '@/lib/utils';
 import { LoadingRows, initials } from './SageRows';
 import { CaretDown, CheckCircle, MagnifyingGlass, Minus, PaperPlaneTilt, Plus, X } from '@phosphor-icons/react';
@@ -131,21 +131,37 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
   const [products, setProducts] = useState<Product[]>([]);
   const [customerId, setCustomerId] = useState(search.get('customerId') || '');
   const [cart, setCart] = useState<Line[]>([]);
-  const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
 
   useEffect(() => {
     Promise.all([api.getCustomers(), api.getProducts()])
       .then(([customerRows, productRows]) => { setCustomers(customerRows); setProducts(productRows); })
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Could not load Sage data'));
+    // Capability gating is best-effort: if this call fails, default to the
+    // permissive built-in behavior rather than blocking the whole wizard on
+    // a metadata endpoint that isn't required for the write itself.
+    api.getCapabilities().then(setCapabilities).catch(() => {});
   }, []);
 
+  // Never let a UI action reach a connector/Sage error the API already knows
+  // is unsupported (PATH_NOT_SUPPORTED/NotImplementedException) - hide or
+  // disable it instead. Defaults to supported while capabilities are still
+  // loading so the wizard doesn't flash a disabled state on every load.
+  const invoiceSupported = capabilities ? capabilities.features['invoice.create'] === true : true;
+  const quoteSupported = capabilities ? capabilities.features['quote.create'] === true : true;
+  const kindSupported = kind === 'invoice' ? invoiceSupported : quoteSupported;
+
   const customer = customers.find((item) => item.sageId === customerId);
+  // Subtotal only - the FINAL total (including tax) is computed by Sage 50
+  // when it posts the document, not client-side. Tax rules vary by
+  // province, customer, item, and exemption, so a flat rate here would be
+  // wrong for many companies. Never show a computed "total" as if it were
+  // Sage's authoritative figure.
   const subtotal = cart.reduce((sum, line) => sum + line.price * line.qty, 0);
-  const total = subtotal * 1.13;
-  const canAdvance = step === 0 ? Boolean(customerId) : step === 1 ? cart.length > 0 : true;
+  const canAdvance = step === 0 ? Boolean(customerId) : step === 1 ? cart.length > 0 : step === 3 ? kindSupported : true;
   const customerItems = customers.map((item) => ({ id: item.sageId, title: item.name, subtitle: [item.city, item.email].filter(Boolean).join(' · ') || item.sageId }));
   const productItems = products.map((item) => ({ id: item.sku, title: item.name, subtitle: [item.sku, item.description].filter(Boolean).join(' · '), meta: formatMoney(item.price) }));
 
@@ -201,8 +217,8 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
       {step === 0 && <div className="wizard-grid">
         <section className="wizard-panel">
           <div className="seg section" aria-label="Document type">
-            <button className={kind === 'invoice' ? 'active' : ''} onClick={() => setKind('invoice')} aria-pressed={kind === 'invoice'}>Invoice</button>
-            <button className={kind === 'quote' ? 'active' : ''} onClick={() => setKind('quote')} aria-pressed={kind === 'quote'}>Quote</button>
+            {invoiceSupported && <button className={kind === 'invoice' ? 'active' : ''} onClick={() => setKind('invoice')} aria-pressed={kind === 'invoice'}>Invoice</button>}
+            {quoteSupported && <button className={kind === 'quote' ? 'active' : ''} onClick={() => setKind('quote')} aria-pressed={kind === 'quote'}>Quote</button>}
           </div>
           <SearchPicker label="Customer" placeholder="Choose a customer" searchPlaceholder="Search customers…" items={customerItems} selectedId={customerId} onSelect={setCustomerId} />
         </section>
@@ -229,12 +245,12 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
         <section className="card hero document-preview">
           <span className="kicker">{kind} draft</span><h2>{customer?.name}</h2><div className="rule" />
           {cart.map((line) => <div className="row" key={line.sku}><span className="row-main row-title">{line.name} × {line.qty}</span><span className="money small">{formatMoney(line.price * line.qty)}</span></div>)}
-          <div className="rule" /><div className="total-row"><span>Subtotal</span><span className="money">{formatMoney(subtotal)}</span></div><div className="total-row"><span>HST 13%</span><span className="money">{formatMoney(subtotal * 0.13)}</span></div><div className="total-row strong"><span>Total</span><span className="money">{formatMoney(total)}</span></div>
+          <div className="rule" /><div className="total-row strong"><span>Subtotal</span><span className="money">{formatMoney(subtotal)}</span></div>
         </section>
-        <section className="wizard-aside"><label className="kicker" htmlFor="job-note">Note on the job</label><textarea id="job-note" className="textarea" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Visible to the customer" /></section>
+        <section className="wizard-aside"><p className="notice">Sage 50 calculates the final total, including tax, when it posts this {kind}. The subtotal above does not include tax.</p></section>
       </div>}
 
-      {step === 3 && <div className="wizard-grid"><section className="card hero"><span className="kicker">Ready to post</span><div className="hero-money money">{formatMoney(total)}</div><p className="notice">This {kind} will be posted through the Sage 50 connector and its job status will be polled.</p></section><aside className="wizard-aside card"><span className="kicker">Summary</span><h2>{customer?.name}</h2><p className="notice">{cart.length} line{cart.length === 1 ? '' : 's'}</p>{note && <p className="notice">“{note}”</p>}</aside></div>}
+      {step === 3 && <div className="wizard-grid"><section className="card hero"><span className="kicker">Ready to post</span><div className="hero-money money">{formatMoney(subtotal)}</div><p className="notice">{kindSupported ? <>Subtotal before tax. Sage 50 calculates and posts the final total. This {kind} will be posted through the Sage 50 connector and its job status will be polled.</> : <>Posting a {kind} is not available in this release.</>}</p></section><aside className="wizard-aside card"><span className="kicker">Summary</span><h2>{customer?.name}</h2><p className="notice">{cart.length} line{cart.length === 1 ? '' : 's'}</p></aside></div>}
 
       {step === 4 && <div className="empty"><CheckCircle size={64} color="var(--color-accent)" /><h2>{message}</h2><p className="notice">The connector confirmed the write.</p><button onClick={() => router.replace('/dashboard')} className="btn btn-block">Back to home</button></div>}
 

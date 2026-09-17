@@ -415,6 +415,9 @@ a {
   border-radius: 50%;
   background: var(--color-accent);
 }
+.sync-dot.offline {
+  background: var(--color-neutral-500);
+}
 .main {
   max-width: 430px;
   margin: auto;
