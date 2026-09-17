@@ -31,8 +31,8 @@ test('an action the API explicitly marks unsupported is "unsupported", not block
 });
 
 test('missing the feature flag entirely (not just false) is also unsupported, never assumed true', () => {
-  const capabilities = caps();
-  delete (capabilities.features as any)[ACTION];
+  const featuresWithoutAction = Object.fromEntries(Object.entries(caps().features).filter(([key]) => key !== ACTION));
+  const capabilities = { ...caps(), features: featuresWithoutAction };
   const result = resolveActionAvailability({ action: ACTION, capabilitiesStatus: 'loaded', capabilities, connectorsStatus: 'loaded', connectors: [connector()] });
   assert.equal(result.status, 'unsupported');
 });
