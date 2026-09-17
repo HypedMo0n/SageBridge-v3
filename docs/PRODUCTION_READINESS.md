@@ -236,11 +236,46 @@ see the final report for this pass's actual run results.
 commit `4cda757`), capability/contract tests
 (`test/capabilities.test.ts`).
 
-**Connector** (`SageBridge-Connector`): compiles against .NET Framework
-4.8 x86 (target unverified this pass — no `.NET SDK` available in this
-sandbox); `SageBridge.Tests` action-capability/cross-file consistency
-tests reviewed by careful manual grep-verification of every referenced
-symbol, not compiled or executed.
+**Connector** (`SageBridge-Connector`): source-reviewed only, never
+compiled or run, in every pass so far. Confirmed why this sandbox cannot
+close that gap: no `dotnet`/`mono`/`msbuild` is installed here, AND (more
+fundamentally) `SageBridge.Connector.csproj`/`SageBridge.Tests.csproj`
+both reference `Sage_SA.SDK.dll`, `Sage_SA.Domain.dll`, and
+`Sage_SA.Domain.Utility.dll` via a hardcoded HintPath
+(`C:\Program Files (x86)\Sage 50 Accounting SDK\SDK\...`) that only
+exists after installing the licensed Sage 50 Accounting SDK on Windows -
+these binaries cannot be obtained or substituted here, so even installing
+a .NET SDK in this sandbox would not make a real build possible.
+`SageBridge.Tests`'s action-capability/cross-file consistency tests were
+reviewed by careful manual grep-verification of every referenced symbol,
+not compiled or executed. **CONNECTOR BUILD GATE: NOT RUN.**
+
+Exact commands to run on a Windows machine with Visual Studio 2022 (or
+Build Tools) with the ".NET desktop development" workload, a .NET SDK
+with the net48 targeting pack, and the Sage 50 Accounting SDK actually
+installed:
+
+```powershell
+git clone --branch phase1-production-connector https://github.com/HypedMo0n/SageBridge-Connector.git
+cd SageBridge-Connector
+git log -1 --format=%H   # confirm this checks out 994a8f4bee842b587e5d82cbb7ca84afc28818fb
+
+# Build the connector itself (the .sln only contains this project)
+dotnet restore SageBridge.Connector\SageBridge.Connector.csproj
+dotnet build SageBridge.Connector\SageBridge.Connector.csproj -c Release -p:Platform=x86
+
+# SageBridge.Tests is deliberately NOT in the .sln - build and run it directly
+dotnet restore SageBridge.Tests\SageBridge.Tests.csproj
+dotnet build SageBridge.Tests\SageBridge.Tests.csproj -c Debug -p:Platform=x86
+.\SageBridge.Tests\bin\x86\Debug\net48\SageBridgeTests.exe
+echo $LASTEXITCODE   # Program.cs returns a non-zero exit code on any failed assertion
+```
+
+If `dotnet build` errors on the WinForms/net48 combination outside a full
+Visual Studio install, use MSBuild from a Developer PowerShell for VS
+2022 instead: `msbuild SageBridge.Connector\SageBridge.Connector.csproj
+/p:Configuration=Release /p:Platform=x86` (same pattern for the Tests
+project).
 
 **Across repos**: capability matrix (`docs/CAPABILITY_MATRIX.md`) has no
 unexplained gaps as of this pass; every enabled UI action has a complete
