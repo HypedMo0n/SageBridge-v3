@@ -15,13 +15,50 @@ Code path complete, end-to-end wired, and covered by automated tests
 
 - `customer.read`, `invoice.read`, `product.read` — connector sync →
   API → frontend, all backed by real synced data, no client fabrication.
-- `customer.create` — form → job queue → `CustomerLedger.Save()`.
+- `customer.create` — form → job queue → `CustomerLedger.Save()`, gated
+  by `lib/capability-gate.ts` (fails closed - see below).
 - `invoice.create`, `quote.create` — create wizard → job queue →
-  `SalesJournal.Post()` (transaction type `0` for invoice, `2` for quote).
+  `SalesJournal.Post()` (transaction type `0` for invoice, `2` for quote),
+  same fail-closed gating.
 - Deployment capability/version contract: `GET /api/capabilities`,
   `GET /health`, connector heartbeat capability advertising
   (`supportedActions`/`supportedSync`), surfaced in the frontend Settings →
   About section and the header connector-status chip.
+- `/sync/quotes`, `/sync/invoice-summary` ingestion — the connector always
+  sent both; the API now stores them (`quotes`, `invoice_summaries`
+  tables) instead of 404ing. No read route or UI consumes this data yet -
+  storage only, see Unsupported below.
+
+### Capability gating fails closed, not open
+
+An earlier version of this gating defaulted `invoice.create`/
+`quote.create` to `true` whenever `GET /api/capabilities` failed to load,
+and consulted only the API's deployment-wide flag - never the *specific*
+company's connector. Both were real gaps: a metadata fetch failure could
+silently permit a write the deployment didn't actually support, and an
+API flag of `true` said nothing about whether that company's paired
+connector was online or new enough to actually implement the action.
+
+Fixed in `lib/capability-gate.ts` (`resolveActionAvailability`), used by
+both `CreateWizard.tsx` and `app/customers/new/page.tsx`. An action is
+`ready` to submit only when **all** of the following hold, and any other
+outcome disables the action with an explicit, user-visible reason instead
+of letting the request go out and fail downstream:
+
+1. `GET /api/capabilities` resolved successfully (not loading, not errored)
+   and its `features[action]` is `true`.
+2. `GET /api/companies/{id}/connectors` resolved successfully for the
+   selected company.
+3. At least one non-revoked connector for that company reports `online`.
+4. That online connector's `supportedActions` includes the action.
+
+A failed fetch at step 1 or 2 resolves to `blocked`, never to `ready` -
+there is no fallback branch that assumes support. An old connector that
+never advertised capabilities reports an empty `supportedActions` array,
+which is treated identically to "missing the capability", not "unknown,
+so allow it". See `test/capability-gate.test.ts` for the full state
+matrix (14 cases) and `docs/CAPABILITY_MATRIX.md` for where each action
+uses this.
 
 ## Unsupported in Beta 1 (intentionally, and honestly surfaced)
 
@@ -32,14 +69,13 @@ Code path complete, end-to-end wired, and covered by automated tests
   in the current architecture (no server-side mail provider, no safe way
   to send credentials from the browser). No email action is exposed
   anywhere in the UI.
-- `quote.read` — no API route or D1 storage for synced quotes. The
-  connector already POSTs `/sync/quotes` and `/sync/invoice-summary`
-  (`SyncEngine.cs`), but the API has no handler for either path yet. This
-  is real, currently-inert drift on the connector's send side; it does
-  not reach the user because there is no corresponding UI. Left
-  unimplemented this pass — building the API route plus a quotes-history
-  UI is new scope, not a hardening fix, and was excluded to avoid
-  expanding the feature surface under a stabilization task.
+- `quote.read` — the API now stores every quote and invoice-summary the
+  connector sends (`/sync/quotes`, `/sync/invoice-summary` - previously
+  404ing, fixed this pass), but there is still no read route or UI. The
+  invoices/quotes list page correctly says "The current API has no quote
+  read route or quote sync. No quote history is shown." Building a read
+  route plus a quotes-history UI remains new scope, not a hardening fix,
+  and is excluded from this pass.
 - `inventory.quantity`, `bom.read`, `bom.build`, `bom.unbuild` — no
   connector code exists for any of these (verified by direct grep of the
   connector source; zero matches for quantity-on-hand or BOM SDK calls).
@@ -105,9 +141,48 @@ To close the above, before a production release:
   `requireCompanyAccess`/`X-Company-Id` plus organization ownership
   checks; connector job claim/result routes are scoped by
   `connector.organizationId`/`connector.companyId`.
-- CORS: `FRONTEND_ORIGINS` allow-list (now set in `wrangler.toml` —
-  previously empty, which silently rejected every real browser origin;
-  fixed and regression-tested in `test/capabilities.test.ts`).
+- CORS: `FRONTEND_ORIGINS` allow-list (`wrangler.toml`) now includes both
+  the stable Vercel alias domain (`sagebridge-v3.vercel.app`) and the
+  per-branch alias Vercel assigns to `beta1-rc1` deployments
+  (`sagebridge-v3-git-beta1-rc1-hypedmo0ns-projects.vercel.app`), verified
+  directly against the Vercel API's deployment metadata rather than
+  guessed. Recent `beta1-rc1` deployments in that Vercel project show
+  `target:null` (Preview), not `"production"`, so the stable alias domain
+  may not always be serving the latest `beta1-rc1` build - without the
+  branch-alias origin, a tester following a preview link would be
+  rejected by CORS with exactly the symptom this project has seen before.
+  Regression-tested in `test/capabilities.test.ts`.
+
+### Beta/Production environment separation - release blocker
+
+`wrangler.toml` previously said `ENVIRONMENT = "production"` while
+`RELEASE = "beta1-rc1"` - a direct contradiction, now corrected to
+`ENVIRONMENT = "beta"`. But the label was never the real problem: **there
+is only one Cloudflare Worker and one D1 database (`sagebridge-db`) for
+this entire project.** `[env.production]`/`[env.development]` in
+`wrangler.toml` only override the Worker's deploy `name`, not `[vars]` or
+the D1 binding - so Beta and Production share the same database today.
+This is a genuine release blocker, not a cosmetic labeling issue: a
+"Beta" tester and a "Production" user would read and write the exact same
+company/financial data if both were ever pointed at this Worker
+simultaneously. **Do not treat Beta and Production as isolated until a
+second D1 database and a second Worker (or environment-scoped `[vars]`)
+are actually provisioned** - a Cloudflare account action, not a code
+change, and out of scope for this pass.
+
+**Separately discovered, unresolved**: a second Vercel project,
+`sagebridge-v3-beta` (live at `sagebridge-v3-beta.vercel.app`), exists on
+the same Vercel account. It is **not linked to the `SageBridge-v3` GitHub
+repository** (`link: null` in the Vercel API) and its deployment history
+shows commits and an author (`Mireia Guide <mireia@users.noreply.github.com>`,
+deployed by an actor named `hermes-agent`) that do not appear anywhere in
+this repository's verified git history. Its own commit messages
+("fix: point Beta release at Beta API", "fix: restore authenticated Beta
+company access") imply a second, unknown API deployment this repository
+has no record of. This was **not** added to `FRONTEND_ORIGINS` and no
+assumption was made about its legitimacy - it needs a human decision:
+confirm whether this is sanctioned Beta infrastructure (and if so, who
+controls it and what API it points to) or have it investigated/removed.
 - All Sage writes go through the official SDK (`CustomerLedger.Save()`,
   `SalesJournal.Post()`); no direct SQL writes into Sage tables exist
   anywhere in the connector. Read-only SQL (`SDKDatabaseUtility`) is used
@@ -169,13 +244,18 @@ symbol, not compiled or executed.
 
 **Across repos**: capability matrix (`docs/CAPABILITY_MATRIX.md`) has no
 unexplained gaps as of this pass; every enabled UI action has a complete
-path or is honestly disabled/hidden; no client-side accounting value
-(tax, total) is presented as Sage-authoritative without Sage as the
-source. Remaining gap: `/sync/quotes` and `/sync/invoice-summary` have no
-receiving API route (documented above, not user-visible).
+path, is gated closed against its own connector's real capability, or is
+honestly disabled/hidden; no client-side accounting value (tax, total) is
+presented as Sage-authoritative without Sage as the source; `/sync/quotes`
+and `/sync/invoice-summary` no longer 404 on every sync cycle.
 
-**Gate status**: see the final report for the two required, separate
-status lines — `CODE-LEVEL RELEASE GATE` and `REAL SAGE E2E RELEASE GATE`.
-The latter cannot be `PASS` until the real-E2E tests listed above are
-actually executed against a real Sage 50 Canada SDK/company; no such
-execution occurred as part of this pass.
+**Gate status**: see the final report for the required status lines -
+`Frontend test/build gate`, `API test/build gate`, `Connector test/build
+gate`, `Cross-stack contract gate`, `Beta environment isolation gate`, and
+`Real Sage E2E gate` - plus the two summary lines, `CODE-LEVEL RELEASE
+GATE` and `REAL SAGE E2E RELEASE GATE`. The connector gate cannot be
+`PASS` (only source-reviewed) without a `.NET SDK`, which this sandbox
+does not have. The Beta environment isolation gate cannot be `PASS` until
+a second D1 database/Worker is provisioned (see above). The Real Sage E2E
+gate cannot be `PASS` until the real-E2E tests listed above are actually
+executed against a real Sage 50 Canada SDK/company.
