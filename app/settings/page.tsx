@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, getSelectedCompanyId, type Capabilities, type ConnectorInfo } from '@/lib/api';
 import { useAuth } from '@/components/AuthProvider';
 
 const groups = [
@@ -10,6 +10,51 @@ const groups = [
   ['Documents', [['Company & logo', '—'], ['Tax rates', '—']]],
   ['Account', [['Users & permissions', 'Managed on desktop'], ['This device', 'Current browser']]],
 ] as const;
+
+function AboutSection() {
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [companyName, setCompanyName] = useState<string | null>(null);
+  const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
+  const [connector, setConnector] = useState<ConnectorInfo | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const companyId = getSelectedCompanyId();
+    Promise.all([
+      api.getCapabilities(),
+      api.bootstrap(),
+      companyId ? api.getConnectors(companyId) : Promise.resolve<ConnectorInfo[]>([]),
+    ]).then(([caps, boot, connectors]) => {
+      if (cancelled) return;
+      setCapabilities(caps);
+      const company = boot.companies.find((c) => c.id === companyId) || null;
+      setCompanyName(company?.name ?? null);
+      setLastSeenAt(company?.lastSeenAt ?? null);
+      // Not every deployment has a connector paired yet, and a company can
+      // have more than one over its lifetime - the most recently seen one
+      // is the one actually relevant to "is sync working right now".
+      const active = [...connectors].sort((a, b) => (b.lastSeenAt || '').localeCompare(a.lastSeenAt || ''))[0] ?? null;
+      setConnector(active);
+    }).catch(() => { /* best-effort: this section stays on its "unknown" defaults */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const rows: Array<[string, string]> = [
+    ['App version', process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ? `0.1.0 (${process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA.slice(0, 7)})` : '0.1.0'],
+    ['API release', capabilities?.release ?? 'unknown'],
+    ['API build', capabilities?.buildSha ?? 'unknown'],
+    ['Company', companyName ?? 'No company selected'],
+    ['Connector', connector ? `${connector.version ?? 'unknown version'} · ${connector.online ? 'Online' : 'Offline'}` : 'Not paired'],
+    ['Last sync', lastSeenAt ? new Date(lastSeenAt).toLocaleString('en-CA') : 'Not reported'],
+  ];
+
+  return (
+    <section className="section card">
+      <h2 className="kicker">About</h2>
+      {rows.map(([label, value]) => <div className="row" key={label}><span className="row-main">{label}</span><span className="row-sub">{value}</span></div>)}
+    </section>
+  );
+}
 
 export default function Page() {
   const { logout } = useAuth();
@@ -76,6 +121,7 @@ export default function Page() {
       )}
     </section>
     <section className="section card"><h2 className="kicker">Data boundary</h2><p className="notice">SageBridge presents synchronized Sage 50 values. Accounting calculations remain in Sage 50.</p></section>
+    <AboutSection />
     {message && <p className="notice">{message}</p>}
     <button className="btn" onClick={() => setMessage('Settings are managed by the Sage 50 connector.')}>Save settings</button>
   </>;

@@ -93,6 +93,8 @@ export interface CompanyDetail { id: string; organizationId?: string; name: stri
 export interface BootstrapState { user: AuthUser; organization: Organization; companies: CompanyDetail[] }
 export interface PairingCode { code: string; expiresAt: string }
 export interface ProvisioningState { state: ProvisioningStatus; progress: number; errorCode: string | null; errorMessage: string | null; updatedAt: string | null; counts: Record<string, number | undefined> }
+export interface Capabilities { release: string; apiVersion: string; schemaVersion: string; buildSha: string; features: Record<string, boolean> }
+export interface ConnectorInfo { id: string; displayName: string | null; version: string | null; status: string; lastSeenAt: string | null; createdAt: string; revokedAt: string | null; online: boolean; supportedActions: string[]; supportedSync: string[] }
 
 // API Client — Firebase ID token auth (no hardcoded keys)
 class SageBridgeAPI {
@@ -149,6 +151,20 @@ class SageBridgeAPI {
 
   async deleteAccount(): Promise<{ success: boolean; message: string }> {
     return this.request<{ success: boolean; message: string }>('/api/account', { method: 'DELETE' }, false, false);
+  }
+
+  // Deployment-wide feature/version contract - not scoped to a company, so
+  // callable before a company is selected and used to capability-gate UI
+  // actions rather than let them fail with a raw 404/500 at click time.
+  async getCapabilities(): Promise<Capabilities> {
+    return this.request<Capabilities>('/api/capabilities', {}, false, false);
+  }
+
+  // Resolves the company from the URL path, same as createPairingCode/
+  // getProvisioning above - not company-scoped via X-Company-Id.
+  async getConnectors(companyId: string): Promise<ConnectorInfo[]> {
+    const response = await this.request<{ connectors: ConnectorInfo[] }>(`/api/companies/${encodeURIComponent(companyId)}/connectors`, {}, false, false);
+    return response.connectors;
   }
 
   // Customers
