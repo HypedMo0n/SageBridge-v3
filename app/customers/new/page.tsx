@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, getSelectedCompanyId, type Capabilities, type ConnectorInfo } from '@/lib/api';
+import { resolveActionAvailability, type LoadStatus } from '@/lib/capability-gate';
 import { ArrowLeft, CheckCircle, SpinnerGap } from '@phosphor-icons/react';
 
 type WriteStage = 'idle' | 'queued' | 'processing' | 'refreshing' | 'done';
@@ -47,9 +48,28 @@ export default function NewCustomerPage() {
   const [error, setError] = useState('');
   const [jobStatus, setJobStatus] = useState('');
   const [stage, setStage] = useState<WriteStage>('idle');
+  const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [capabilitiesStatus, setCapabilitiesStatus] = useState<LoadStatus>('loading');
+  const [connectors, setConnectors] = useState<ConnectorInfo[] | null>(null);
+  const [connectorsStatus, setConnectorsStatus] = useState<LoadStatus>('loading');
+
+  useEffect(() => {
+    // Same fail-closed contract as CreateWizard: a failed fetch here sets
+    // 'error', never a silent "assume supported" fallback.
+    api.getCapabilities()
+      .then((value) => { setCapabilities(value); setCapabilitiesStatus('loaded'); })
+      .catch(() => setCapabilitiesStatus('error'));
+    const companyId = getSelectedCompanyId();
+    (companyId ? api.getConnectors(companyId) : Promise.reject(new Error('no company selected')))
+      .then((value) => { setConnectors(value); setConnectorsStatus('loaded'); })
+      .catch(() => setConnectorsStatus('error'));
+  }, []);
+
+  const availability = resolveActionAvailability({ action: 'customer.create', capabilitiesStatus, capabilities, connectorsStatus, connectors });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (availability.status !== 'ready') return;
     setError('');
     setIsSubmitting(true);
     setJobStatus('Creating job...');
@@ -138,9 +158,21 @@ export default function NewCustomerPage() {
 
       <h1 className="text-2xl font-bold tracking-tight mb-5">New customer</h1>
 
+      {availability.status === 'unsupported' ? (
+        <div className="p-4 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-sm">
+          Creating customers isn&apos;t available in this release.
+        </div>
+      ) : <>
+
       {stage !== 'idle' && <WriteProgress stage={stage} />}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {availability.status === 'blocked' && (
+          <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 text-sm border border-amber-200 dark:border-amber-900">
+            {availability.message}
+          </div>
+        )}
+
         {error && (
           <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm border border-red-200 dark:border-red-900">
             {error}
@@ -218,10 +250,10 @@ export default function NewCustomerPage() {
         <div className="flex gap-3 pt-2">
           <button
             type="submit"
-            disabled={isSubmitting || !formData.name.trim()}
+            disabled={isSubmitting || !formData.name.trim() || availability.status !== 'ready'}
             className="flex-1 h-12 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors"
           >
-            {isSubmitting ? 'Creating...' : 'Create customer'}
+            {isSubmitting ? 'Creating...' : availability.status === 'checking' ? 'Checking…' : 'Create customer'}
           </button>
           {!isSubmitting && (
             <Link
@@ -233,6 +265,7 @@ export default function NewCustomerPage() {
           )}
         </div>
       </form>
+      </>}
     </div>
   );
 }

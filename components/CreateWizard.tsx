@@ -2,7 +2,8 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { api, type Capabilities, type Customer, type Product } from '@/lib/api';
+import { api, getSelectedCompanyId, type Capabilities, type ConnectorInfo, type Customer, type Product } from '@/lib/api';
+import { resolveActionAvailability, type LoadStatus } from '@/lib/capability-gate';
 import { formatMoney } from '@/lib/utils';
 import { LoadingRows, initials } from './SageRows';
 import { CaretDown, CheckCircle, MagnifyingGlass, Minus, PaperPlaneTilt, Plus, X } from '@phosphor-icons/react';
@@ -135,24 +136,39 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
+  const [capabilitiesStatus, setCapabilitiesStatus] = useState<LoadStatus>('loading');
+  const [connectors, setConnectors] = useState<ConnectorInfo[] | null>(null);
+  const [connectorsStatus, setConnectorsStatus] = useState<LoadStatus>('loading');
 
   useEffect(() => {
     Promise.all([api.getCustomers(), api.getProducts()])
       .then(([customerRows, productRows]) => { setCustomers(customerRows); setProducts(productRows); })
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : 'Could not load Sage data'));
-    // Capability gating is best-effort: if this call fails, default to the
-    // permissive built-in behavior rather than blocking the whole wizard on
-    // a metadata endpoint that isn't required for the write itself.
-    api.getCapabilities().then(setCapabilities).catch(() => {});
+
+    // A financial write must fail CLOSED, never open, if we can't confirm
+    // it's actually supported - so a failed capabilities/connector fetch
+    // sets 'error', not a silent fallback to "assume it works".
+    api.getCapabilities()
+      .then((value) => { setCapabilities(value); setCapabilitiesStatus('loaded'); })
+      .catch(() => setCapabilitiesStatus('error'));
+
+    const companyId = getSelectedCompanyId();
+    (companyId ? api.getConnectors(companyId) : Promise.reject(new Error('no company selected')))
+      .then((value) => { setConnectors(value); setConnectorsStatus('loaded'); })
+      .catch(() => setConnectorsStatus('error'));
   }, []);
 
-  // Never let a UI action reach a connector/Sage error the API already knows
-  // is unsupported (PATH_NOT_SUPPORTED/NotImplementedException) - hide or
-  // disable it instead. Defaults to supported while capabilities are still
-  // loading so the wizard doesn't flash a disabled state on every load.
-  const invoiceSupported = capabilities ? capabilities.features['invoice.create'] === true : true;
-  const quoteSupported = capabilities ? capabilities.features['quote.create'] === true : true;
-  const kindSupported = kind === 'invoice' ? invoiceSupported : quoteSupported;
+  const invoiceAvailability = resolveActionAvailability({ action: 'invoice.create', capabilitiesStatus, capabilities, connectorsStatus, connectors });
+  const quoteAvailability = resolveActionAvailability({ action: 'quote.create', capabilitiesStatus, capabilities, connectorsStatus, connectors });
+  // The type toggle only hides a kind the API has explicitly marked
+  // unsupported - a connector-side block (offline, missing capability,
+  // still checking) is shown instead of hidden, since that's true of
+  // whichever kind the user is currently on and needs to be explained,
+  // not silently disappear.
+  const invoiceSupported = invoiceAvailability.status !== 'unsupported';
+  const quoteSupported = quoteAvailability.status !== 'unsupported';
+  const kindAvailability = kind === 'invoice' ? invoiceAvailability : quoteAvailability;
+  const kindSupported = kindAvailability.status === 'ready';
 
   const customer = customers.find((item) => item.sageId === customerId);
   // Subtotal only - the FINAL total (including tax) is computed by Sage 50
@@ -250,11 +266,11 @@ export function CreateWizard({ initialKind = 'invoice' }: { initialKind?: 'invoi
         <section className="wizard-aside"><p className="notice">Sage 50 calculates the final total, including tax, when it posts this {kind}. The subtotal above does not include tax.</p></section>
       </div>}
 
-      {step === 3 && <div className="wizard-grid"><section className="card hero"><span className="kicker">Ready to post</span><div className="hero-money money">{formatMoney(subtotal)}</div><p className="notice">{kindSupported ? <>Subtotal before tax. Sage 50 calculates and posts the final total. This {kind} will be posted through the Sage 50 connector and its job status will be polled.</> : <>Posting a {kind} is not available in this release.</>}</p></section><aside className="wizard-aside card"><span className="kicker">Summary</span><h2>{customer?.name}</h2><p className="notice">{cart.length} line{cart.length === 1 ? '' : 's'}</p></aside></div>}
+      {step === 3 && <div className="wizard-grid"><section className="card hero"><span className="kicker">Ready to post</span><div className="hero-money money">{formatMoney(subtotal)}</div><p className="notice">{kindAvailability.status === 'ready' ? <>Subtotal before tax. Sage 50 calculates and posts the final total. This {kind} will be posted through the Sage 50 connector and its job status will be polled.</> : kindAvailability.status === 'checking' ? <>Checking whether this {kind} can be posted…</> : kindAvailability.status === 'blocked' ? <>{kindAvailability.message}</> : <>Posting a {kind} is not available in this release.</>}</p></section><aside className="wizard-aside card"><span className="kicker">Summary</span><h2>{customer?.name}</h2><p className="notice">{cart.length} line{cart.length === 1 ? '' : 's'}</p></aside></div>}
 
       {step === 4 && <div className="empty"><CheckCircle size={64} color="var(--color-accent)" /><h2>{message}</h2><p className="notice">The connector confirmed the write.</p><button onClick={() => router.replace('/dashboard')} className="btn btn-block">Back to home</button></div>}
 
-      {step < 4 && <div className="wizard-actions"><button type="button" className="btn" onClick={() => setStep((value) => Math.max(0, value - 1))} disabled={step === 0 || sending}>Back</button><button type="button" className="btn btn-primary" disabled={!canAdvance || sending} onClick={advance}>{sending ? message : <>{step === 3 && <PaperPlaneTilt />} {step === 0 ? 'Add lines' : step === 1 ? 'Review' : step === 2 ? 'Posting options' : `Post ${kind}`}</>}</button></div>}
+      {step < 4 && <div className="wizard-actions"><button type="button" className="btn" onClick={() => setStep((value) => Math.max(0, value - 1))} disabled={step === 0 || sending}>Back</button><button type="button" className="btn btn-primary" disabled={!canAdvance || sending} onClick={advance}>{sending ? message : <>{step === 3 && <PaperPlaneTilt />} {step === 0 ? 'Add lines' : step === 1 ? 'Review' : step === 2 ? 'Posting options' : kindAvailability.status === 'checking' ? 'Checking…' : `Post ${kind}`}</>}</button></div>}
     </div>
   );
 }

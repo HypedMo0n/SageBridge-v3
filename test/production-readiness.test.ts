@@ -52,14 +52,36 @@ test('CreateWizard payload sent to the API only contains fields the API/connecto
   assert.doesNotMatch(payloadMatch![1], /note/i);
 });
 
-// --- Capability gating in CreateWizard -----------------------------------
+// --- Capability gating in CreateWizard and the customer-create form ------
 
-test('CreateWizard gates invoice/quote posting on the capabilities contract', () => {
+test('CreateWizard and the customer form gate their write action through the shared fail-closed resolver', () => {
   const wizardSource = read('../components/CreateWizard.tsx');
-  assert.match(wizardSource, /api\.getCapabilities\(\)/);
-  assert.match(wizardSource, /features\['invoice\.create'\]/);
-  assert.match(wizardSource, /features\['quote\.create'\]/);
-  assert.match(wizardSource, /kindSupported/);
+  assert.match(wizardSource, /from '@\/lib\/capability-gate'/, 'must use the shared resolver, not its own inline capability check');
+  assert.match(wizardSource, /resolveActionAvailability\(\{ action: 'invoice\.create'/);
+  assert.match(wizardSource, /resolveActionAvailability\(\{ action: 'quote\.create'/);
+  assert.match(wizardSource, /api\.getConnectors\(/, 'must consult the selected company\'s actual connector, not only deployment-wide capabilities');
+
+  const customerFormSource = read('../app/customers/new/page.tsx');
+  assert.match(customerFormSource, /from '@\/lib\/capability-gate'/);
+  assert.match(customerFormSource, /resolveActionAvailability\(\{ action: 'customer\.create'/);
+  assert.match(customerFormSource, /api\.getConnectors\(/);
+});
+
+test('capability fetch failures set an error status, never a fallback to "assume supported"', () => {
+  for (const path of ['../components/CreateWizard.tsx', '../app/customers/new/page.tsx']) {
+    const source = read(path);
+    assert.doesNotMatch(source, /\.catch\(\(\)\s*=>\s*\{\s*\}\)/, `${path}: a capability/connector fetch must not swallow its error silently`);
+    assert.match(source, /setCapabilitiesStatus\('error'\)/, `${path}: must set an explicit error status on a failed capabilities fetch`);
+    assert.match(source, /setConnectorsStatus\('error'\)/, `${path}: must set an explicit error status on a failed connectors fetch`);
+  }
+});
+
+test('the submit/post action is disabled for anything other than a resolved "ready" availability', () => {
+  const wizardSource = read('../components/CreateWizard.tsx');
+  assert.match(wizardSource, /kindSupported = kindAvailability\.status === 'ready'/);
+
+  const customerFormSource = read('../app/customers/new/page.tsx');
+  assert.match(customerFormSource, /availability\.status !== 'ready'/);
 });
 
 // --- Customer create is reachable from a rendered page -------------------
